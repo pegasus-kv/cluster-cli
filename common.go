@@ -21,7 +21,14 @@ func (l *NodeList) Set(val string) error {
 	return nil
 }
 
-var ShellDir string = os.Getenv("PEGASUS_SHELL_DIR")
+var ShellDir string
+
+func init() {
+	ShellDir = os.Getenv("PEGASUS_SHELL_PATH")
+	if ShellDir == "" {
+		panic("env PEGASUS_SHELL_PATH not provided")
+	}
+}
 
 func runShellInput(input string, arg ...string) (*exec.Cmd, error) {
 	cmd := exec.Command(path.Join(ShellDir, "run.sh"), append([]string{"shell", "--cluster"}, arg...)...)
