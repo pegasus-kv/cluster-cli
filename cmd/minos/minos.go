@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,15 +16,34 @@ import (
 type Minos struct {
 	Cluster   string
 	ClientDir string
-	MetaList  string
 }
 
-func NewMinosDeployment(cluster string, confPath string, clientDir string, metaList string) (*Minos, error) {
+func init() {
+	pegasusConf := os.Getenv("PEGASUS_CONFIG")
+	if pegasusConf == "" {
+		fmt.Println("env PEGASUS_CONFIG not provided")
+		os.Exit(1)
+	}
+	minosClientDir := os.Getenv("MINOS_CLIENT_DIR")
+	if minosClientDir == "" {
+		fmt.Println("env MINOS_CLIENT_DIR not provided")
+		os.Exit(1)
+	}
+	pegasus.CreateDeployment = func(cluster string) pegasus.Deployment {
+		d, err := NewMinosDeployment(cluster, pegasusConf, minosClientDir)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+}
+
+func NewMinosDeployment(cluster string, confPath string, clientDir string) (*Minos, error) {
 	clusterCfg := path.Join(confPath, "pegasus-"+cluster+".cfg")
 	if !fileExists(clusterCfg) {
-		return nil, errors.New("config file for cluster '"+cluster+"' not found")
+		return nil, errors.New("config file for cluster '" + cluster + "' not found")
 	}
-	return &Minos{cluster, clientDir, metaList}, nil
+	return &Minos{cluster, clientDir}, nil
 }
 
 func (m *Minos) StartNode(node pegasus.Node) error {
