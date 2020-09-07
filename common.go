@@ -2,6 +2,7 @@ package pegasus
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -26,7 +27,8 @@ var ShellDir string
 func init() {
 	ShellDir = os.Getenv("PEGASUS_SHELL_PATH")
 	if ShellDir == "" {
-		panic("env PEGASUS_SHELL_PATH not provided")
+		fmt.Println("env PEGASUS_SHELL_PATH not provided")
+		os.Exit(1)
 	}
 }
 
