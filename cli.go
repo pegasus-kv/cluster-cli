@@ -26,6 +26,10 @@ func Main() {
 	for _, node := range strings.Split(*nodesStr, ",") {
 		nodes = append(nodes, node)
 	}
+	if len(*cluster) == 0 {
+		fmt.Println("cluster address not provided")
+		os.Exit(1)
+	}
 	if !(os.Args[1] == "rolling-update" && *all) && len(nodes) == 0 {
 		fmt.Println("at least one node is required")
 		os.Exit(1)
@@ -40,18 +44,23 @@ func Main() {
 		fmt.Println("env MINOS_CONFIG_FILE not provided")
 	}
 	deploy := CreateDeployment(*cluster)
+	var err error
 	switch os.Args[1] {
 	case "add-node":
-		AddNodes(*cluster, deploy, *metaList, nodes)
+		err = AddNodes(*cluster, deploy, *metaList, nodes)
 	case "remove-node":
-		RemoveNodes(*cluster, deploy, *metaList, nodes)
+		err = RemoveNodes(*cluster, deploy, *metaList, nodes)
 	case "rolling-update":
 		if *all {
 			nodes = nil
 		}
-		RollingUpdateNodes(*cluster, deploy, *metaList, nodes)
+		err = RollingUpdateNodes(*cluster, deploy, *metaList, nodes)
 	default:
 		fmt.Println("add-node, remove-node or rolling-update is required")
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }

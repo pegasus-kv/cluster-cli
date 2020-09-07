@@ -61,7 +61,7 @@ func findReplicaNode(name string) (Node, bool) {
 }
 
 func ValidateCluster(cluster string, metaList string, nodeNames NodeList) (string, error) {
-	var nodeMap map[string]bool
+	nodeMap := make(map[string]bool)
 	for _, name := range nodeNames {
 		_, prs := nodeMap[name]
 		if prs {
