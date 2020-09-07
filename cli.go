@@ -22,7 +22,7 @@ func Main() {
 		os.Exit(1)
 	}
 
-	flag.CommandLine.Parse(os.Args[1:])
+	flag.CommandLine.Parse(os.Args[2:])
 	for _, node := range strings.Split(*nodesStr, ",") {
 		nodes = append(nodes, node)
 	}
