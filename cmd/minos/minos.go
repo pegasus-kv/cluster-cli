@@ -1,15 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"pegasus-cluster-cli"
+	"pegasus-cluster-cli/cmd"
 	"strconv"
 )
 
@@ -19,15 +18,28 @@ type Minos struct {
 }
 
 func init() {
-	pegasusConf := os.Getenv("PEGASUS_CONFIG")
-	if pegasusConf == "" {
-		fmt.Println("env PEGASUS_CONFIG not provided")
-		os.Exit(1)
-	}
-	minosClientDir := os.Getenv("MINOS_CLIENT_DIR")
-	if minosClientDir == "" {
-		fmt.Println("env MINOS_CLIENT_DIR not provided")
-		os.Exit(1)
+	var (
+		pegasusConf string
+		minosClientDir string
+		minosConf string
+	)
+	cmd.RootCmd.PersistentFlags().StringVar(&pegasusConf, "pegasus-conf", os.Getenv("PEGASUS_CONFIG"), "directory where the config files of pegasus are stored, usually deployment-config/xiaomi-config/conf/pegasus. Could be set from env PEGASUS_CONFIG")
+	cmd.RootCmd.PersistentFlags().StringVar(&minosClientDir, "minos-client-dir", os.Getenv("MINOS_CLIENT_DIR"), "directory of the executable file of minos(deploy). Could be set from env MINOS_CLIENT_DIR")
+	cmd.RootCmd.PersistentFlags().StringVar(&minosConf, "minos-conf", os.Getenv("MINOS_CONFIG_FILE"), "location of minos configuration file. Could be set from env MINOS_CONFIG_FILE")
+	cmd.RootCmd.MarkPersistentFlagDirname("pegasus-conf")
+	cmd.RootCmd.MarkPersistentFlagDirname("minos-client-dir")
+	cmd.RootCmd.MarkPersistentFlagFilename("minos-conf", "cfg")
+	cmd.Validate = func() error {
+		if pegasusConf == "" {
+			return errors.New("pegasus-config is empty, set flag --pegasus-conf or env PEGASUS_CONFIG")
+		}
+		if minosClientDir == "" {
+			return errors.New("minos-client-dir is empty, set flag --minos-client-dir or env MINOS_CLIENT_DIR")
+		}
+		if minosConf == "" {
+			return errors.New("minos-config is empty, set flag --minos-conf or env MINOS_CONFIG_FILE")
+		}
+		return nil
 	}
 	pegasus.CreateDeployment = func(cluster string) pegasus.Deployment {
 		d, err := NewMinosDeployment(cluster, pegasusConf, minosClientDir)
@@ -120,24 +132,4 @@ func fileExists(path string) bool {
 		}
 	}
 	return true
-}
-
-func outputEachLine(cmd *exec.Cmd, forEach func(line string)) error {
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	defer stdout.Close()
-
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		forEach(scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-	return nil
 }

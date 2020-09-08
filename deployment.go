@@ -41,6 +41,8 @@ type Deployment interface {
 	ListAllNodes() ([]Node, error)
 }
 
+var CreateDeployment func(cluster string) Deployment = nil
+
 var nodes []Node
 
 func initNodes(deploy Deployment) {

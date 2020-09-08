@@ -1,9 +1,9 @@
 package main
 
 import (
-	"pegasus-cluster-cli"
+	"pegasus-cluster-cli/cmd"
 )
 
 func main() {
-	pegasus.Main()
+	cmd.Execute()
 }

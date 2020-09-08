@@ -2,9 +2,7 @@ package pegasus
 
 import (
 	"bufio"
-	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -13,27 +11,15 @@ import (
 
 type NodeList []string
 
-func (l *NodeList) String() string {
-	return strings.Join(*l, ",")
-}
+var shellDir string
 
-func (l *NodeList) Set(val string) error {
-	*l = append(*l, val)
-	return nil
-}
-
-var ShellDir string
-
-func init() {
-	ShellDir = os.Getenv("PEGASUS_SHELL_PATH")
-	if ShellDir == "" {
-		fmt.Println("env PEGASUS_SHELL_PATH not provided")
-		os.Exit(1)
-	}
+func SetShellDir(dir string) {
+	shellDir = dir
 }
 
 func runShellInput(input string, arg ...string) (*exec.Cmd, error) {
-	cmd := exec.Command(path.Join(ShellDir, "run.sh"), append([]string{"shell", "--cluster"}, arg...)...)
+	cmd := exec.Command("run.sh", append([]string{"shell", "--cluster"}, arg...)...)
+	cmd.Dir = shellDir
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -45,7 +31,7 @@ func runShellInput(input string, arg ...string) (*exec.Cmd, error) {
 }
 
 func runSh(arg ...string) *exec.Cmd {
-	return exec.Command(path.Join(ShellDir, "run.sh"), arg...)
+	return exec.Command(path.Join(shellDir, "run.sh"), arg...)
 }
 
 func startRunShellInput(input string, arg ...string) error {
@@ -53,7 +39,7 @@ func startRunShellInput(input string, arg ...string) error {
 	if err != nil {
 		return err
 	}
-	return cmd.Start()
+	return cmd.Run()
 }
 
 func checkOutput(cmd *exec.Cmd, checker func(line string) bool) error {
@@ -61,7 +47,7 @@ func checkOutput(cmd *exec.Cmd, checker func(line string) bool) error {
 	if err != nil {
 		return err
 	}
-	err = cmd.Start()
+	err = cmd.Run()
 	if err != nil {
 		return err
 	}
@@ -106,5 +92,4 @@ func waitFor(fetchValue func() (interface{}, error), pred func(interface{}) bool
 		}
 		time.Sleep(interval)
 	}
-	return true, nil
 }
