@@ -116,7 +116,11 @@ func (m *Minos) ListAllNodes() ([]pegasus.Node, error) {
 		} else {
 			job = pegasus.JobReplica
 		}
-		nodes = append(nodes, pegasus.Node{job, k, strconv.Itoa(v.Task)})
+		nodes = append(nodes, pegasus.Node{
+			Job: job,
+			Name: strconv.Itoa(v.Task),
+			IPPort: k,
+		})
 	}
 	return nodes, nil
 }

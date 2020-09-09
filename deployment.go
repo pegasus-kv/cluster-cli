@@ -58,12 +58,13 @@ var CreateDeployment func(cluster string) Deployment = nil
 
 var nodes []Node
 
-func initNodes(deploy Deployment) {
+func initNodes(deploy Deployment) error {
 	res, err := deploy.ListAllNodes()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	nodes = res
+	return nil
 }
 
 func findReplicaNode(name string) (Node, bool) {
@@ -122,7 +123,9 @@ func ValidateCluster(cluster string, metaList string, nodeNames []string) (strin
 }
 
 func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
-	initNodes(deploy)
+	if err := initNodes(deploy); err != nil {
+		return err
+	}
 	pmeta, err := ValidateCluster(cluster, metaList, nodeNames)
 	if err != nil {
 		return err
@@ -149,7 +152,9 @@ func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames []st
 }
 
 func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
-	initNodes(deploy)
+	if err := initNodes(deploy); err != nil {
+		return err
+	}
 	pmeta, err := ValidateCluster(cluster, metaList, nodeNames)
 	if err != nil {
 		return err
@@ -181,7 +186,9 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 }
 
 func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
-	initNodes(deploy)
+	if err := initNodes(deploy); err != nil {
+		return err
+	}
 	pmeta, err := ValidateCluster(cluster, metaList, nodeNames)
 	if err != nil {
 		return err
