@@ -42,8 +42,16 @@ func startRunShellInput(input string, arg ...string) error {
 	return cmd.Run()
 }
 
-func checkOutput(cmd *exec.Cmd, checker func(line string) bool) error {
-	out, err := cmd.Output()
+func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) error {
+	var (
+		out []byte
+		err error
+	)
+	if stderr {
+		out, err = cmd.CombinedOutput()
+	} else {
+		out, err = cmd.Output()
+	}
 	if err != nil {
 		return err
 	}
@@ -60,7 +68,7 @@ func checkOutput(cmd *exec.Cmd, checker func(line string) bool) error {
 
 func checkOutputContainsOnce(cmd *exec.Cmd, substr string) (bool, error) {
 	count := 0
-	if err := checkOutput(cmd, func(line string) bool {
+	if err := checkOutput(cmd, false, func(line string) bool {
 		if strings.Contains(line, substr) {
 			count++
 			return count > 1
