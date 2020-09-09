@@ -76,7 +76,7 @@ func (m *Minos) StopNode(node pegasus.Node) error {
 
 func (m *Minos) RollingUpdate(node pegasus.Node) error {
 	cmd := m.execDeploy("rolling_update", "pegasus", m.Cluster, "--job", node.Job.String(),
-		"--task", node.Name, "--update-package --update-config --time_interval 20 --skip_confirm")
+		"--task", node.Name, "--update_package --update_config --time_interval 20 --skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return pegasus.NewDeployError("failed to execute minos script", out)
 	}
