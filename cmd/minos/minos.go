@@ -60,16 +60,16 @@ func NewMinosDeployment(cluster string, confPath string, clientDir string) (*Min
 
 func (m *Minos) StartNode(node pegasus.Node) error {
 	cmd := m.execDeploy("bootstrap", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name)
-	if err := cmd.Run(); err != nil {
-		return err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return pegasus.NewDeployError("failed to execute minos script", out)
 	}
 	return nil
 }
 
 func (m *Minos) StopNode(node pegasus.Node) error {
 	cmd := m.execDeploy("stop", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name, "--skip_confirm")
-	if err := cmd.Run(); err != nil {
-		return err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return pegasus.NewDeployError("failed to execute minos script", out)
 	}
 	return nil
 }
@@ -77,8 +77,8 @@ func (m *Minos) StopNode(node pegasus.Node) error {
 func (m *Minos) RollingUpdate(node pegasus.Node) error {
 	cmd := m.execDeploy("rolling_update", "pegasus", m.Cluster, "--job", node.Job.String(),
 		"--task", node.Name, "--update-package --update-config --time_interval 20 --skip_confirm")
-	if err := cmd.Run(); err != nil {
-		return err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return pegasus.NewDeployError("failed to execute minos script", out)
 	}
 	return nil
 }
@@ -126,7 +126,9 @@ func (m *Minos) ListAllNodes() ([]pegasus.Node, error) {
 }
 
 func (m *Minos) execDeploy(args ...string) *exec.Cmd {
-	return exec.Command(path.Join(m.ClientDir, "deploy"), args...)
+	cmd := exec.Command("./deploy", args...)
+	cmd.Dir = m.ClientDir
+	return cmd
 }
 
 func fileExists(path string) bool {
