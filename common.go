@@ -66,9 +66,9 @@ func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]
 	return out, scanner.Err()
 }
 
-func checkOutputContainsOnce(cmd *exec.Cmd, substr string) (bool, []byte, error) {
+func checkOutputContainsOnce(cmd *exec.Cmd, stderr bool, substr string) (bool, []byte, error) {
 	count := 0
-	out, err := checkOutput(cmd, false, func(line string) bool {
+	out, err := checkOutput(cmd, stderr, func(line string) bool {
 		if strings.Contains(line, substr) {
 			count++
 			return count > 1

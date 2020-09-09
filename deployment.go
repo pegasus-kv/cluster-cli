@@ -565,7 +565,7 @@ func setMetaLevel(level string, metaList string) error {
 	if err != nil {
 		return err
 	}
-	ok, out, err := checkOutputContainsOnce(cmd, "control meta level ok")
+	ok, out, err := checkOutputContainsOnce(cmd, false, "control meta level ok")
 	if err != nil {
 		return err
 	}
@@ -580,7 +580,7 @@ func setRemoteCommand(pmeta string, attr string, value string, metaList string) 
 	if err != nil {
 		return err
 	}
-	ok, out, err := checkOutputContainsOnce(cmd, "OK")
+	ok, out, err := checkOutputContainsOnce(cmd, true, "OK")
 	if err != nil {
 		return err
 	}
