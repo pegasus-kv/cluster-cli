@@ -308,7 +308,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		serving := -1
 		opening := -1
 		closing := -1
-		if _, err := checkOutput(cmd, false, func(line string) bool {
+		out, err := checkOutput(cmd, true, func(line string) bool {
 			ss := r1.FindStringSubmatch(line)
 			if len(ss) > 1 {
 				if v, err := strconv.Atoi(ss[1]); err == nil {
@@ -331,11 +331,12 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 				}
 			}
 			return false
-		}); err != nil {
+		})
+		if err != nil {
 			return nil, err
 		}
 		if serving == -1 || opening == -1 || closing == -1 {
-			return nil, errors.New("extract replica count from perf counters failed")
+			return nil, NewDeployError("extract replica count from perf counters failed", out)
 		}
 		c += 1
 		return []int{serving, opening, closing}, nil
