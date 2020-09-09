@@ -4,12 +4,9 @@ import (
 	"bufio"
 	"io"
 	"os/exec"
-	"path"
 	"strings"
 	"time"
 )
-
-type NodeList []string
 
 var shellDir string
 

@@ -62,7 +62,7 @@ func findReplicaNode(name string) (Node, bool) {
 	return Node{}, false
 }
 
-func ValidateCluster(cluster string, metaList string, nodeNames NodeList) (string, error) {
+func ValidateCluster(cluster string, metaList string, nodeNames []string) (string, error) {
 	nodeMap := make(map[string]bool)
 	for _, name := range nodeNames {
 		_, prs := nodeMap[name]
@@ -107,7 +107,7 @@ func ValidateCluster(cluster string, metaList string, nodeNames NodeList) (strin
 	}
 }
 
-func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames NodeList) error {
+func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
 	initNodes(deploy)
 	pmeta, err := ValidateCluster(cluster, metaList, nodeNames)
 	if err != nil {
@@ -134,7 +134,7 @@ func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames Node
 	return nil
 }
 
-func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames NodeList) error {
+func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
 	initNodes(deploy)
 	pmeta, err := ValidateCluster(cluster, metaList, nodeNames)
 	if err != nil {
@@ -166,7 +166,7 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames N
 	return nil
 }
 
-func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, nodeNames NodeList) error {
+func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
 	initNodes(deploy)
 	pmeta, err := ValidateCluster(cluster, metaList, nodeNames)
 	if err != nil {
