@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"errors"
-	"log"
+	"fmt"
 	"os"
 	"pegasus-cluster-cli"
 
@@ -41,7 +41,8 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			deploy := pegasus.CreateDeployment(cluster)
 			if err := pegasus.AddNodes(cluster, deploy, metaList, nodes); err != nil {
-				log.Fatalf("%+v", err)
+				fmt.Println(err)
+				os.Exit(1)
 			}
 		},
 	}
@@ -57,7 +58,8 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			deploy := pegasus.CreateDeployment(cluster)
 			if err := pegasus.RemoveNodes(cluster, deploy, metaList, nodes); err != nil {
-				log.Fatalf("%+v", err)
+				fmt.Println(err)
+				os.Exit(1)
 			}
 		},
 	}
@@ -75,7 +77,8 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			deploy := pegasus.CreateDeployment(cluster)
 			if err := pegasus.RollingUpdateNodes(cluster, deploy, metaList, nodes); err != nil {
-				log.Fatalf("%+v", err)
+				fmt.Println(err)
+				os.Exit(1)
 			}
 		},
 	}
