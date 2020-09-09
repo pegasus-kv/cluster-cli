@@ -73,7 +73,7 @@ func ValidateCluster(cluster string, metaList string, nodeNames []string) (strin
 	}
 
 	ok1, ok2 := false, false
-	r1 := regexp.MustCompile("/(.*)$")
+	r1 := regexp.MustCompile("/([^/]*)$")
 	r2 := regexp.MustCompile("([0-9.:]*)$")
 	cmd, err := runShellInput("cluster_info", metaList)
 	if err != nil {
@@ -84,12 +84,12 @@ func ValidateCluster(cluster string, metaList string, nodeNames []string) (strin
 	if err := checkOutput(cmd, true, func(line string) bool {
 		if strings.Contains(line, "zookeeper_root") {
 			rs := r1.FindStringSubmatch(line)
-			if rs[1] == cluster {
+			if strings.TrimSpace(rs[1]) == cluster {
 				ok1 = true
 			}
 		} else if strings.Contains(line, "primary_meta_server") {
 			rs := r2.FindStringSubmatch(line)
-			if len(rs[1]) != 0 {
+			if len(rs) != 0 {
 				ok2 = true
 				pmeta = rs[1]
 			}
