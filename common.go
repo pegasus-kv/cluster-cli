@@ -46,7 +46,7 @@ func checkOutput(cmd *exec.Cmd, checker func(line string) bool) error {
 	if err != nil {
 		return err
 	}
-	err = cmd.Run()
+	err = cmd.Start()
 	if err != nil {
 		return err
 	}
