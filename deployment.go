@@ -283,9 +283,10 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	}
 	time.Sleep(time.Second)
 
-	r1 := regexp.MustCompile(`replica_stub\.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
-	r2 := regexp.MustCompile(`replica_stub\.opening\.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
-	r3 := regexp.MustCompile(`replica_stub\.closing\.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
+	c = 0
+	r1 := regexp.MustCompile(`replica_stub.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
+	r2 := regexp.MustCompile(`replica_stub.opening.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
+	r3 := regexp.MustCompile(`replica_stub.closing.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
 	if _, err := waitFor(func() (interface{}, error) {
 		if c%10 == 0 {
 			for _, gpid := range gpids {
@@ -313,24 +314,21 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			if len(ss) > 1 {
 				if v, err := strconv.Atoi(ss[1]); err == nil {
 					serving = v
-					return false
 				}
 			}
 			ss = r2.FindStringSubmatch(line)
 			if len(ss) > 1 {
 				if v, err := strconv.Atoi(ss[1]); err == nil {
 					opening = v
-					return false
 				}
 			}
 			ss = r3.FindStringSubmatch(line)
 			if len(ss) > 1 {
 				if v, err := strconv.Atoi(ss[1]); err == nil {
 					closing = v
-					return true
 				}
 			}
-			return false
+			return serving != -1 && opening != -1 && closing != -1
 		})
 		if err != nil {
 			return nil, err
@@ -338,7 +336,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		if serving == -1 || opening == -1 || closing == -1 {
 			return nil, NewDeployError("extract replica count from perf counters failed", out)
 		}
-		c += 1
+		c++
 		return []int{serving, opening, closing}, nil
 	}, func(v interface{}) bool {
 		a := v.([]int)
