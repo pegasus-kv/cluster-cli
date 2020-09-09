@@ -41,6 +41,19 @@ type Deployment interface {
 	ListAllNodes() ([]Node, error)
 }
 
+type DeployError struct {
+	Msg string
+	Output []byte
+}
+
+func (e *DeployError) Error() string {
+	return e.Msg + ". Output:\n" + string(e.Output) + "\n"
+}
+
+func NewDeployError(msg string, out []byte) *DeployError {
+	return &DeployError{msg, out}
+}
+
 var CreateDeployment func(cluster string) Deployment = nil
 
 var nodes []Node
@@ -81,7 +94,7 @@ func ValidateCluster(cluster string, metaList string, nodeNames []string) (strin
 	}
 
 	var pmeta string
-	if err := checkOutput(cmd, true, func(line string) bool {
+	out, err := checkOutput(cmd, true, func(line string) bool {
 		if strings.Contains(line, "zookeeper_root") {
 			rs := r1.FindStringSubmatch(line)
 			if strings.TrimSpace(rs[1]) == cluster {
@@ -95,13 +108,14 @@ func ValidateCluster(cluster string, metaList string, nodeNames []string) (strin
 			}
 		}
 		return ok1 && ok2
-	}); err != nil {
+	});
+	if err != nil {
 		return "", err
 	}
 	if !ok1 {
-		return "", errors.New("cluster name and meta list not matched")
+		return "", NewDeployError("cluster name and meta list not matched", out)
 	} else if !ok2 {
-		return "", errors.New("extract primary_meta_server by shell failed")
+		return "", NewDeployError("extract primary_meta_server by shell failed", out)
 	} else {
 		return pmeta, nil
 	}
@@ -237,7 +251,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			return nil, err
 		}
 		priCount := -1
-		if err := checkOutput(cmd, false, func(line string) bool {
+		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.HasPrefix(line, "propose ") {
 				gpids = append(gpids, strings.ReplaceAll(strings.Fields(line)[2], ".", " "))
 			}
@@ -287,7 +301,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		serving := -1
 		opening := -1
 		closing := -1
-		if err := checkOutput(cmd, false, func(line string) bool {
+		if _, err := checkOutput(cmd, false, func(line string) bool {
 			ss := r1.FindStringSubmatch(line)
 			if len(ss) > 1 {
 				if v, err := strconv.Atoi(ss[1]); err == nil {
@@ -342,7 +356,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			return nil, err
 		}
 		var status string
-		if err := checkOutput(cmd, false, func(line string) bool {
+		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
 				ss := strings.Fields(line)
 				if len(ss) < 2 {
@@ -365,7 +379,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			return nil, err
 		}
 		var status string
-		if err := checkOutput(cmd, false, func(line string) bool {
+		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
 				ss := strings.Fields(line)
 				if len(ss) < 2 {
@@ -409,7 +423,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		if err != nil {
 			return nil, err
 		}
-		if err := checkOutput(cmd, false, func(line string) bool {
+		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
 				// TODO: check field length
 				val, err = strconv.Atoi(strings.Fields(line)[3])
@@ -430,7 +444,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 
 	// downgrade node and kill partition
 	var gpid []string
-	if err := checkOutput(runSh("downgrade_node", "-c", metaList, "-n", node.IPPort, "-t", "run"), false, func(line string) bool {
+	if _, err := checkOutput(runSh("downgrade_node", "-c", metaList, "-n", node.IPPort, "-t", "run"), false, func(line string) bool {
 		if strings.HasPrefix(line, "propose ") {
 			gpid = append(gpid, strings.ReplaceAll(strings.Fields(line)[2], ".", " "))
 			return true
@@ -446,7 +460,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		if err != nil {
 			return nil, err
 		}
-		if err := checkOutput(cmd, false, func(line string) bool {
+		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
 				val, err = strconv.Atoi(strings.Fields(line)[2])
 				if err != nil {
@@ -501,7 +515,7 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 			return err
 		}
 		var opCount string
-		err = checkOutput(cmd, false, func(line string) bool {
+		_, err = checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, "balance_operation_count") {
 				rs := r.FindStringSubmatch(line)
 				opCount = rs[1]
@@ -544,12 +558,12 @@ func setMetaLevel(level string, metaList string) error {
 	if err != nil {
 		return err
 	}
-	ok, err := checkOutputContainsOnce(cmd, "control meta level ok")
+	ok, out, err := checkOutputContainsOnce(cmd, "control meta level ok")
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return errors.New("set meta level to " + level + " failed")
+		return NewDeployError("set meta level to " + level + " failed", out)
 	}
 	return nil
 }
@@ -559,12 +573,12 @@ func setRemoteCommand(pmeta string, attr string, value string, metaList string) 
 	if err != nil {
 		return err
 	}
-	ok, err := checkOutputContainsOnce(cmd, "OK")
+	ok, out, err := checkOutputContainsOnce(cmd, "OK")
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return errors.New("set " + attr + " to " + value + " failed")
+		return NewDeployError("set " + attr + " to " + value + " failed", out)
 	}
 	return nil
 }
@@ -577,7 +591,7 @@ func waitForHealthy(metaList string) error {
 		}
 		flag := false
 		count := 0
-		if err := checkOutput(cmd, false, func(line string) bool {
+		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if flag {
 				ss := strings.Fields(line)
 				if len(ss) < 7 {

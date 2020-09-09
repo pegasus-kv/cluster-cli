@@ -42,7 +42,7 @@ func startRunShellInput(input string, arg ...string) error {
 	return cmd.Run()
 }
 
-func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) error {
+func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]byte, error) {
 	var (
 		out []byte
 		err error
@@ -53,7 +53,7 @@ func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) err
 		out, err = cmd.Output()
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	reader := bytes.NewReader(out)
@@ -63,21 +63,22 @@ func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) err
 			break;
 		}
 	}
-	return scanner.Err()
+	return out, scanner.Err()
 }
 
-func checkOutputContainsOnce(cmd *exec.Cmd, substr string) (bool, error) {
+func checkOutputContainsOnce(cmd *exec.Cmd, substr string) (bool, []byte, error) {
 	count := 0
-	if err := checkOutput(cmd, false, func(line string) bool {
+	out, err := checkOutput(cmd, false, func(line string) bool {
 		if strings.Contains(line, substr) {
 			count++
 			return count > 1
 		}
 		return false
-	}); err != nil {
-		return false, err
+	})
+	if err != nil {
+		return false, out, err
 	}
-	return count == 1, nil
+	return count == 1, out, nil
 }
 
 func waitFor(fetchValue func() (interface{}, error), pred func(interface{}) bool, interval time.Duration, timeout int) (bool, error)  {
