@@ -348,14 +348,19 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	if err := startRunShellInput("remote_command -l "+node.IPPort+" flush_log", metaList); err != nil {
 		return err
 	}
+
+	fmt.Println("Set lb.add_secondary_max_count_for_one_node to 100...")
 	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "100", metaList); err != nil {
 		return err
 	}
 
+	fmt.Println("Rolling update by deployment...")
 	if err := deploy.RollingUpdate(node); err != nil {
 		return err
 	}
+	fmt.Println("Rolling update by deployment done")
 
+	fmt.Println("Wait "+node.IPPort+" to become alive...")
 	if _, err := waitFor(func() (interface{}, error) {
 		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
@@ -379,6 +384,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		return err
 	}
 
+	fmt.Println("Wait "+node.IPPort+" to become alive...")
 	if _, err := waitFor(func() (interface{}, error) {
 		cmd, err := runShellInput("ls -d", metaList)
 		if err != nil {
@@ -402,6 +408,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		return err
 	}
 
+	fmt.Println("Wait "+node.IPPort+" to become healthy...")
 	if err := waitForHealthy(metaList); err != nil {
 		return err
 	}
