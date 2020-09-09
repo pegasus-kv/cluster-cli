@@ -2,6 +2,7 @@ package pegasus
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"os/exec"
 	"strings"
@@ -42,16 +43,13 @@ func startRunShellInput(input string, arg ...string) error {
 }
 
 func checkOutput(cmd *exec.Cmd, checker func(line string) bool) error {
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	err = cmd.Start()
+	out, err := cmd.Output()
 	if err != nil {
 		return err
 	}
 
-	scanner := bufio.NewScanner(stdout)
+	reader := bytes.NewReader(out)
+	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		if fin := checker(scanner.Text()); fin {
 			break;
