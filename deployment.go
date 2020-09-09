@@ -75,7 +75,7 @@ func ValidateCluster(cluster string, metaList string, nodeNames NodeList) (strin
 	ok1, ok2 := false, false
 	r1 := regexp.MustCompile("/(.*)$")
 	r2 := regexp.MustCompile("([0-9.:]*)$")
-	cmd, err := runShellInput("cluster_info", metaList, "2>&1")
+	cmd, err := runShellInput("cluster_info", metaList)
 	if err != nil {
 		return "", err
 	}
