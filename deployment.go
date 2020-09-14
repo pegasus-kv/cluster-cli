@@ -42,7 +42,7 @@ type Deployment interface {
 }
 
 type DeployError struct {
-	Msg string
+	Msg    string
 	Output []byte
 }
 
@@ -59,6 +59,7 @@ var CreateDeployment func(cluster string) Deployment = nil
 var nodes []Node
 
 func initNodes(deploy Deployment) error {
+	fmt.Println("List all nodes...")
 	res, err := deploy.ListAllNodes()
 	if err != nil {
 		return err
@@ -77,6 +78,7 @@ func findReplicaNode(name string) (Node, bool) {
 }
 
 func ValidateCluster(cluster string, metaList string, nodeNames []string) (string, error) {
+	fmt.Println("Validate cluster name and node list...")
 	nodeMap := make(map[string]bool)
 	for _, name := range nodeNames {
 		_, prs := nodeMap[name]
@@ -109,7 +111,7 @@ func ValidateCluster(cluster string, metaList string, nodeNames []string) (strin
 			}
 		}
 		return ok1 && ok2
-	});
+	})
 	if err != nil {
 		return "", err
 	}
@@ -222,6 +224,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		return err
 	}
 	if nodeNames == nil {
+		fmt.Println("Rolling update meta servers...")
 		for _, node := range nodes {
 			if node.Job == JobMeta {
 				if err := deploy.RollingUpdate(node); err != nil {
@@ -229,6 +232,8 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 				}
 			}
 		}
+		fmt.Println("Rolling update meta servers done")
+		fmt.Println("Rolling update collectors...")
 		for _, node := range nodes {
 			if node.Job == JobCollector {
 				if err := deploy.RollingUpdate(node); err != nil {
@@ -236,22 +241,30 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 				}
 			}
 		}
+		fmt.Println("Rolling update collectors done")
+
+		rebalanceCluster(pmeta, metaList, false)
 	}
 
 	return nil
 }
 
 func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node Node) error {
+	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name, node.IPPort)
+
 	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "0", metaList); err != nil {
 		return err
 	}
+
 	c := 0
 	var gpids []string
-	if _, err := waitFor(func() (interface{}, error) {
+	fmt.Println("Migrating primary replicas out of node...")
+	fin, err := waitFor(func() (interface{}, error) {
 		if c%10 == 0 {
 			if err := runSh("migrate_node", "-c", metaList, "-n", node.IPPort, "-t", "run").Start(); err != nil {
 				return nil, err
 			}
+			fmt.Println("Sent migrate propose")
 		}
 		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
@@ -276,10 +289,62 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		}); err != nil {
 			return nil, err
 		}
+		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort)
 		c += 1
 		return priCount, nil
-	}, func(v interface{}) bool { return v == 0 }, time.Second, 28); err != nil {
+	}, func(v interface{}) bool { return v == 0 }, time.Second, 28)
+	if err != nil {
 		return err
+	}
+	if fin {
+		fmt.Println("Migrate done")
+	} else {
+		fmt.Println("Migrate timeout")
+	}
+	time.Sleep(time.Second)
+
+	fmt.Println("Downgrading replicas on node...")
+	fin, err = waitFor(func() (interface{}, error) {
+		if c%10 == 0 {
+			if err := runSh("downgrade_node", "-c", metaList, "-n", node.IPPort, "-t", "run").Start(); err != nil {
+				return nil, err
+			}
+			fmt.Println("Sent downgrade propose")
+		}
+		cmd, err := runShellInput("nodes -d", metaList)
+		if err != nil {
+			return nil, err
+		}
+		priCount := -1
+		if _, err := checkOutput(cmd, false, func(line string) bool {
+			if strings.HasPrefix(line, "propose ") {
+				gpids = append(gpids, strings.ReplaceAll(strings.Fields(line)[2], ".", " "))
+			}
+			if strings.Contains(line, node.IPPort) {
+				ss := strings.Fields(line)
+				res, err := strconv.Atoi(ss[3])
+				if err != nil {
+					return false
+				}
+				c = res
+				return true
+			}
+			priCount = 0
+			return false
+		}); err != nil {
+			return nil, err
+		}
+		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort)
+		c += 1
+		return priCount, nil
+	}, func(v interface{}) bool { return v == 0 }, time.Second, 28)
+	if err != nil {
+		return err
+	}
+	if fin {
+		fmt.Println("Downgrade done")
+	} else {
+		fmt.Println("Downgrade timeout")
 	}
 	time.Sleep(time.Second)
 
@@ -287,8 +352,10 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	r1 := regexp.MustCompile(`replica_stub.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
 	r2 := regexp.MustCompile(`replica_stub.opening.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
 	r3 := regexp.MustCompile(`replica_stub.closing.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
-	if _, err := waitFor(func() (interface{}, error) {
+	fmt.Println("Checking replicas closed on node...")
+	fin, err = waitFor(func() (interface{}, error) {
 		if c%10 == 0 {
+			fmt.Println("Send kill_partition commands to node...")
 			for _, gpid := range gpids {
 				cmd, err := runShellInput("remote_command -l "+node.IPPort+" replica.kill_partition "+gpid, metaList)
 				if err != nil {
@@ -298,9 +365,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 					return nil, err
 				}
 			}
-			if err := runSh("migrate_node", "-c", metaList, "-n", node.IPPort, "-t", "run").Start(); err != nil {
-				return nil, err
-			}
+			fmt.Println("Sent to " + strconv.Itoa(len(gpids)) + " partitions.")
 		}
 		cmd, err := runShellInput("remote_command -l "+node.IPPort+" perf-counters '.*replica(Count)'", metaList)
 		if err != nil {
@@ -336,13 +401,20 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		if serving == -1 || opening == -1 || closing == -1 {
 			return nil, NewDeployError("extract replica count from perf counters failed", out)
 		}
+		fmt.Println("Still " + strconv.Itoa(serving+opening+closing) + " replicas not closed on " + node.IPPort)
 		c++
 		return []int{serving, opening, closing}, nil
 	}, func(v interface{}) bool {
 		a := v.([]int)
 		return a[0]+a[1]+a[2] == 0
-	}, time.Second, 28); err != nil {
+	}, time.Second, 28)
+	if err != nil {
 		return err
+	}
+	if fin {
+		fmt.Println("Close done")
+	} else {
+		fmt.Println("Close timeout")
 	}
 
 	if err := startRunShellInput("remote_command -l "+node.IPPort+" flush_log", metaList); err != nil {
@@ -360,31 +432,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	}
 	fmt.Println("Rolling update by deployment done")
 
-	fmt.Println("Wait "+node.IPPort+" to become alive...")
-	if _, err := waitFor(func() (interface{}, error) {
-		cmd, err := runShellInput("nodes -d", metaList)
-		if err != nil {
-			return nil, err
-		}
-		var status string
-		if _, err := checkOutput(cmd, false, func(line string) bool {
-			if strings.Contains(line, node.IPPort) {
-				ss := strings.Fields(line)
-				if len(ss) < 2 {
-					return false
-				}
-				status = ss[1]
-			}
-			return false
-		}); err != nil {
-			return nil, err
-		}
-		return status, nil
-	}, func(v interface{}) bool { return v == "ALIVE" }, time.Second, 0); err != nil {
-		return err
-	}
-
-	fmt.Println("Wait "+node.IPPort+" to become alive...")
+	fmt.Println("Wait " + node.IPPort + " to become alive...")
 	if _, err := waitFor(func() (interface{}, error) {
 		cmd, err := runShellInput("ls -d", metaList)
 		if err != nil {
@@ -408,7 +456,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		return err
 	}
 
-	fmt.Println("Wait "+node.IPPort+" to become healthy...")
+	fmt.Println("Wait " + node.IPPort + " to become healthy...")
 	if err := waitForHealthy(metaList); err != nil {
 		return err
 	}
@@ -567,6 +615,7 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 }
 
 func setMetaLevel(level string, metaList string) error {
+	fmt.Println("Set meta level to steady...")
 	cmd, err := runShellInput("set_meta_level "+level, metaList)
 	if err != nil {
 		return err
@@ -576,12 +625,13 @@ func setMetaLevel(level string, metaList string) error {
 		return err
 	}
 	if !ok {
-		return NewDeployError("set meta level to " + level + " failed", out)
+		return NewDeployError("set meta level to "+level+" failed", out)
 	}
 	return nil
 }
 
 func setRemoteCommand(pmeta string, attr string, value string, metaList string) error {
+	fmt.Println("Set " + attr + " to " + value + "...")
 	cmd, err := runShellInput(fmt.Sprintf("remote_command -l %s %s %s", pmeta, attr, value), metaList)
 	if err != nil {
 		return err
@@ -591,7 +641,7 @@ func setRemoteCommand(pmeta string, attr string, value string, metaList string) 
 		return err
 	}
 	if !ok {
-		return NewDeployError("set " + attr + " to " + value + " failed", out)
+		return NewDeployError("set "+attr+" to "+value+" failed", out)
 	}
 	return nil
 }

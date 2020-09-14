@@ -60,7 +60,7 @@ func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		if fin := checker(scanner.Text()); fin {
-			break;
+			break
 		}
 	}
 	return out, scanner.Err()
@@ -81,7 +81,7 @@ func checkOutputContainsOnce(cmd *exec.Cmd, stderr bool, substr string) (bool, [
 	return count == 1, out, nil
 }
 
-func waitFor(fetchValue func() (interface{}, error), pred func(interface{}) bool, interval time.Duration, timeout int) (bool, error)  {
+func waitFor(fetchValue func() (interface{}, error), pred func(interface{}) bool, interval time.Duration, timeout int) (bool, error) {
 	i := 0
 	for {
 		val, err := fetchValue()
@@ -89,7 +89,7 @@ func waitFor(fetchValue func() (interface{}, error), pred func(interface{}) bool
 			return false, err
 		}
 		if !pred(val) {
-			i += 1;
+			i += 1
 			if timeout != 0 && i > timeout {
 				return false, nil
 			}
