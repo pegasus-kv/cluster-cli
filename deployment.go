@@ -272,9 +272,6 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		}
 		priCount := -1
 		if _, err := checkOutput(cmd, false, func(line string) bool {
-			if strings.HasPrefix(line, "propose ") {
-				gpids = append(gpids, strings.ReplaceAll(strings.Fields(line)[2], ".", " "))
-			}
 			if strings.Contains(line, node.IPPort) {
 				ss := strings.Fields(line)
 				res, err := strconv.Atoi(ss[3])
@@ -304,9 +301,16 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	time.Sleep(time.Second)
 
 	fmt.Println("Downgrading replicas on node...")
+	c = 0
 	fin, err = waitFor(func() (interface{}, error) {
 		if c%10 == 0 {
-			if err := runSh("downgrade_node", "-c", metaList, "-n", node.IPPort, "-t", "run").Start(); err != nil {
+			gpids = []string{}
+			if _, err := checkOutput(runSh("downgrade_node", "-c", metaList, "-n", node.IPPort, "-t", "run"), false, func(line string) bool {
+				if strings.HasPrefix(line, "propose ") {
+					gpids = append(gpids, strings.ReplaceAll(strings.Fields(line)[2], ".", " "))
+				}
+				return false
+			}); err != nil {
 				return nil, err
 			}
 			fmt.Println("Sent downgrade propose")
@@ -317,9 +321,6 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		}
 		priCount := -1
 		if _, err := checkOutput(cmd, false, func(line string) bool {
-			if strings.HasPrefix(line, "propose ") {
-				gpids = append(gpids, strings.ReplaceAll(strings.Fields(line)[2], ".", " "))
-			}
 			if strings.Contains(line, node.IPPort) {
 				ss := strings.Fields(line)
 				res, err := strconv.Atoi(ss[3])
