@@ -56,7 +56,7 @@ func NewDeployError(msg string, out []byte) *DeployError {
 
 var CreateDeployment func(cluster string) Deployment = nil
 
-var nodes []Node
+var globalAllNodes []Node
 
 func initNodes(deploy Deployment) error {
 	fmt.Println("List all nodes...")
@@ -64,12 +64,12 @@ func initNodes(deploy Deployment) error {
 	if err != nil {
 		return err
 	}
-	nodes = res
+	globalAllNodes = res
 	return nil
 }
 
 func findReplicaNode(name string) (Node, bool) {
-	for _, node := range nodes {
+	for _, node := range globalAllNodes {
 		if node.Job == JobReplica && name == node.Name {
 			return node, true
 		}
@@ -201,7 +201,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	}
 
 	if nodeNames == nil {
-		for _, node := range nodes {
+		for _, node := range globalAllNodes {
 			if node.Job == JobReplica {
 				if err := rollingUpdateNode(deploy, pmeta, metaList, node); err != nil {
 					return err
@@ -225,7 +225,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	}
 	if nodeNames == nil {
 		fmt.Println("Rolling update meta servers...")
-		for _, node := range nodes {
+		for _, node := range globalAllNodes {
 			if node.Job == JobMeta {
 				if err := deploy.RollingUpdate(node); err != nil {
 					return err
@@ -234,7 +234,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		}
 		fmt.Println("Rolling update meta servers done")
 		fmt.Println("Rolling update collectors...")
-		for _, node := range nodes {
+		for _, node := range globalAllNodes {
 			if node.Job == JobCollector {
 				if err := deploy.RollingUpdate(node); err != nil {
 					return err
