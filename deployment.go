@@ -435,7 +435,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 
 	fmt.Println("Wait " + node.IPPort + " to become alive...")
 	if _, err := waitFor(func() (interface{}, error) {
-		cmd, err := runShellInput("ls -d", metaList)
+		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
 			return nil, err
 		}
