@@ -9,31 +9,6 @@ import (
 	"time"
 )
 
-type JobType int
-
-const (
-	JobMeta      = 0
-	JobReplica   = 1
-	JobCollector = 2
-)
-
-func (j JobType) String() string {
-	switch j {
-	case JobMeta:
-		return "meta"
-	case JobReplica:
-		return "replica"
-	default:
-		return "collector"
-	}
-}
-
-type Node struct {
-	Job    JobType
-	Name   string
-	IPPort string
-}
-
 type Deployment interface {
 	StartNode(Node) error
 	StopNode(Node) error
@@ -47,7 +22,7 @@ type DeployError struct {
 }
 
 func (e *DeployError) Error() string {
-	return e.Msg + ". Output:\n" + string(e.Output) + "\n"
+	return e.Msg + ". Output:\n" + string(e.Output)
 }
 
 func NewDeployError(msg string, out []byte) *DeployError {
@@ -55,27 +30,6 @@ func NewDeployError(msg string, out []byte) *DeployError {
 }
 
 var CreateDeployment func(cluster string) Deployment = nil
-
-var globalAllNodes []Node
-
-func initNodes(deploy Deployment) error {
-	fmt.Println("List all nodes...")
-	res, err := deploy.ListAllNodes()
-	if err != nil {
-		return err
-	}
-	globalAllNodes = res
-	return nil
-}
-
-func findReplicaNode(name string) (Node, bool) {
-	for _, node := range globalAllNodes {
-		if node.Job == JobReplica && name == node.Name {
-			return node, true
-		}
-	}
-	return Node{}, false
-}
 
 func ValidateCluster(cluster string, metaList string, nodeNames []string) (string, error) {
 	fmt.Println("Validate cluster name and node list...")
@@ -100,12 +54,12 @@ func ValidateCluster(cluster string, metaList string, nodeNames []string) (strin
 	out, err := checkOutput(cmd, true, func(line string) bool {
 		if strings.Contains(line, "zookeeper_root") {
 			rs := r1.FindStringSubmatch(line)
-			if strings.TrimSpace(rs[1]) == cluster {
+			if len(rs) > 1 && strings.TrimSpace(rs[1]) == cluster {
 				ok1 = true
 			}
 		} else if strings.Contains(line, "primary_meta_server") {
 			rs := r2.FindStringSubmatch(line)
-			if len(rs[1]) != 0 {
+			if len(rs) > 1 && len(rs[1]) != 0 {
 				ok2 = true
 				pmeta = rs[1]
 			}
@@ -259,16 +213,16 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	c := 0
 	var gpids []string
 	fmt.Println("Migrating primary replicas out of node...")
-	fin, err := waitFor(func() (interface{}, error) {
+	fin, err := waitFor(func() (bool, error) {
 		if c%10 == 0 {
 			if err := runSh("migrate_node", "-c", metaList, "-n", node.IPPort, "-t", "run").Start(); err != nil {
-				return nil, err
+				return false, err
 			}
 			fmt.Println("Sent migrate propose")
 		}
 		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		priCount := -1
 		if _, err := checkOutput(cmd, false, func(line string) bool {
@@ -284,12 +238,12 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			priCount = 0
 			return false
 		}); err != nil {
-			return nil, err
+			return false, err
 		}
 		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort)
-		c += 1
-		return priCount, nil
-	}, func(v interface{}) bool { return v == 0 }, time.Second, 28)
+		c++
+		return priCount == 0, nil
+	}, time.Second, 28)
 	if err != nil {
 		return err
 	}
@@ -302,7 +256,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 
 	fmt.Println("Downgrading replicas on node...")
 	c = 0
-	fin, err = waitFor(func() (interface{}, error) {
+	fin, err = waitFor(func() (bool, error) {
 		if c%10 == 0 {
 			gpids = []string{}
 			if _, err := checkOutput(runSh("downgrade_node", "-c", metaList, "-n", node.IPPort, "-t", "run"), false, func(line string) bool {
@@ -311,13 +265,13 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 				}
 				return false
 			}); err != nil {
-				return nil, err
+				return false, err
 			}
 			fmt.Println("Sent downgrade propose")
 		}
 		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		priCount := -1
 		if _, err := checkOutput(cmd, false, func(line string) bool {
@@ -333,12 +287,12 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			priCount = 0
 			return false
 		}); err != nil {
-			return nil, err
+			return false, err
 		}
 		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort)
-		c += 1
-		return priCount, nil
-	}, func(v interface{}) bool { return v == 0 }, time.Second, 28)
+		c++
+		return priCount == 0, nil
+	}, time.Second, 28)
 	if err != nil {
 		return err
 	}
@@ -354,23 +308,23 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	r2 := regexp.MustCompile(`replica_stub.opening.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
 	r3 := regexp.MustCompile(`replica_stub.closing.replica\(Count\)","type":"NUMBER","value":([0-9]*)`)
 	fmt.Println("Checking replicas closed on node...")
-	fin, err = waitFor(func() (interface{}, error) {
+	fin, err = waitFor(func() (bool, error) {
 		if c%10 == 0 {
 			fmt.Println("Send kill_partition commands to node...")
 			for _, gpid := range gpids {
 				cmd, err := runShellInput("remote_command -l "+node.IPPort+" replica.kill_partition "+gpid, metaList)
 				if err != nil {
-					return nil, err
+					return false, err
 				}
 				if err := cmd.Start(); err != nil {
-					return nil, err
+					return false, err
 				}
 			}
 			fmt.Println("Sent to " + strconv.Itoa(len(gpids)) + " partitions.")
 		}
 		cmd, err := runShellInput("remote_command -l "+node.IPPort+" perf-counters '.*replica(Count)'", metaList)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		serving := -1
 		opening := -1
@@ -397,17 +351,14 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			return serving != -1 && opening != -1 && closing != -1
 		})
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if serving == -1 || opening == -1 || closing == -1 {
-			return nil, NewDeployError("extract replica count from perf counters failed", out)
+			return false, NewDeployError("extract replica count from perf counters failed", out)
 		}
 		fmt.Println("Still " + strconv.Itoa(serving+opening+closing) + " replicas not closed on " + node.IPPort)
 		c++
-		return []int{serving, opening, closing}, nil
-	}, func(v interface{}) bool {
-		a := v.([]int)
-		return a[0]+a[1]+a[2] == 0
+		return serving + opening + closing == 0, nil
 	}, time.Second, 28)
 	if err != nil {
 		return err
@@ -422,7 +373,6 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		return err
 	}
 
-	fmt.Println("Set lb.add_secondary_max_count_for_one_node to 100...")
 	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "100", metaList); err != nil {
 		return err
 	}
@@ -434,10 +384,10 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	fmt.Println("Rolling update by deployment done")
 
 	fmt.Println("Wait " + node.IPPort + " to become alive...")
-	if _, err := waitFor(func() (interface{}, error) {
+	if _, err := waitFor(func() (bool, error) {
 		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		var status string
 		if _, err := checkOutput(cmd, false, func(line string) bool {
@@ -450,10 +400,10 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 			}
 			return false
 		}); err != nil {
-			return nil, err
+			return false, err
 		}
-		return status, nil
-	}, func(v interface{}) bool { return v == "ALIVE" }, time.Second, 0); err != nil {
+		return status == "ALIVE", nil
+	}, time.Second, 0); err != nil {
 		return err
 	}
 
@@ -479,11 +429,11 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		return err
 	}
 	// wait for pri_count == 0
-	if _, err := waitFor(func() (interface{}, error) {
+	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
@@ -496,10 +446,10 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 			}
 			return false
 		}); err != nil {
-			return nil, err
+			return false, err
 		}
-		return val, nil
-	}, func(val interface{}) bool { return val == 0 }, time.Second, 0); err != nil {
+		return val == 0, nil
+	}, time.Second, 0); err != nil {
 		return err
 	}
 	time.Sleep(time.Second)
@@ -516,11 +466,11 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		return err
 	}
 	// wait for rep_count == 0
-	if _, err := waitFor(func() (interface{}, error) {
+	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		cmd, err := runShellInput("nodes -d", metaList)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
@@ -532,10 +482,10 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 			}
 			return false
 		}); err != nil {
-			return nil, err
+			return false, err
 		}
-		return val, nil
-	}, func(val interface{}) bool { return val == 0 }, time.Second, 0); err != nil {
+		return val == 0, nil
+	}, time.Second, 0); err != nil {
 		return err
 	}
 	time.Sleep(time.Second)
@@ -570,7 +520,7 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 	time.Sleep(time.Duration(180) * time.Second)
 
 	remainTimes := 1
-	r := regexp.MustCompile("total=(\\d+)")
+	r := regexp.MustCompile(`total=(\d+)`)
 	for {
 		cmd, err := runShellInput("cluster_info", metaList)
 		if err != nil {
@@ -580,8 +530,10 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 		_, err = checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, "balance_operation_count") {
 				rs := r.FindStringSubmatch(line)
-				opCount = rs[1]
-				return true
+				if len(rs) > 1 {
+					opCount = rs[1]
+					return true
+				}
 			}
 			return false
 		})
@@ -598,7 +550,7 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 				time.Sleep(time.Duration(30) * time.Second)
 			}
 		} else {
-			fmt.Printf("still %s balance operations to do...", opCount)
+			fmt.Println("still "+opCount+" balance operations to do...")
 			time.Sleep(time.Duration(10) * time.Second)
 		}
 	}
@@ -613,73 +565,4 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 		}
 	}
 	return nil
-}
-
-func setMetaLevel(level string, metaList string) error {
-	fmt.Println("Set meta level to steady...")
-	cmd, err := runShellInput("set_meta_level "+level, metaList)
-	if err != nil {
-		return err
-	}
-	ok, out, err := checkOutputContainsOnce(cmd, false, "control meta level ok")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return NewDeployError("set meta level to "+level+" failed", out)
-	}
-	return nil
-}
-
-func setRemoteCommand(pmeta string, attr string, value string, metaList string) error {
-	fmt.Println("Set " + attr + " to " + value + "...")
-	cmd, err := runShellInput(fmt.Sprintf("remote_command -l %s %s %s", pmeta, attr, value), metaList)
-	if err != nil {
-		return err
-	}
-	ok, out, err := checkOutputContainsOnce(cmd, true, "OK")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return NewDeployError("set "+attr+" to "+value+" failed", out)
-	}
-	return nil
-}
-
-func waitForHealthy(metaList string) error {
-	_, err := waitFor(func() (interface{}, error) {
-		cmd, err := runShellInput("ls -d", metaList)
-		if err != nil {
-			return nil, err
-		}
-		flag := false
-		count := 0
-		if _, err := checkOutput(cmd, false, func(line string) bool {
-			if flag {
-				ss := strings.Fields(line)
-				if len(ss) < 7 {
-					flag = false
-				} else if ss[2] != ss[3] {
-					s5, err := strconv.Atoi(ss[4])
-					if err != nil {
-						return false
-					}
-					s6, err := strconv.Atoi(ss[5])
-					if err != nil {
-						return false
-					}
-					count += s5 + s6
-				}
-			}
-			if strings.Contains(line, " fully_healthy ") {
-				flag = true
-			}
-			return false
-		}); err != nil {
-			return nil, err
-		}
-		return count, nil
-	}, func(v interface{}) bool { return v == 0 }, time.Duration(10)*time.Second, 0)
-	return err
 }

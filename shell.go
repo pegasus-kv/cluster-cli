@@ -6,7 +6,6 @@ import (
 	"io"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 var shellDir string
@@ -79,23 +78,4 @@ func checkOutputContainsOnce(cmd *exec.Cmd, stderr bool, substr string) (bool, [
 		return false, out, err
 	}
 	return count == 1, out, nil
-}
-
-func waitFor(fetchValue func() (interface{}, error), pred func(interface{}) bool, interval time.Duration, timeout int) (bool, error) {
-	i := 0
-	for {
-		val, err := fetchValue()
-		if err != nil {
-			return false, err
-		}
-		if !pred(val) {
-			i += 1
-			if timeout != 0 && i > timeout {
-				return false, nil
-			}
-		} else {
-			return true, nil
-		}
-		time.Sleep(interval)
-	}
 }
