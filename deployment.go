@@ -160,6 +160,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 				if err := rollingUpdateNode(deploy, pmeta, metaList, node); err != nil {
 					return err
 				}
+				fmt.Println()
 			}
 		}
 	} else {
