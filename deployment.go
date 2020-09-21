@@ -91,14 +91,18 @@ func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames []st
 		return err
 	}
 
+	fmt.Println()
 	for _, name := range nodeNames {
 		node, ok := findReplicaNode(name)
 		if !ok {
 			return errors.New("replica node '" + name + "' not found")
 		}
+		fmt.Println("Starting node " + node.IPPort + " by deployment...")
 		if err := deploy.StartNode(node); err != nil {
 			return err
 		}
+		fmt.Println("Starting node by deployment done")
+		fmt.Println()
 	}
 	if err := rebalanceCluster(pmeta, metaList, false); err != nil {
 		return err
@@ -133,10 +137,12 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 		return err
 	}
 
+	fmt.Println()
 	for _, node := range nodes {
 		if err := removeNode(deploy, metaList, pmeta, node); err != nil {
 			return err
 		}
+		fmt.Println()
 	}
 	return nil
 }
@@ -154,6 +160,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		return err
 	}
 
+	fmt.Println()
 	if nodeNames == nil {
 		for _, node := range globalAllNodes {
 			if node.Job == JobReplica {
@@ -172,6 +179,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 			if err := rollingUpdateNode(deploy, pmeta, metaList, node); err != nil {
 				return err
 			}
+			fmt.Println()
 		}
 	}
 
@@ -229,12 +237,14 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
 				ss := strings.Fields(line)
-				res, err := strconv.Atoi(ss[3])
-				if err != nil {
-					return false
+				if len(ss) > 3 {
+					res, err := strconv.Atoi(ss[3])
+					if err != nil {
+						return false
+					}
+					c = res
+					return true
 				}
-				c = res
-				return true
 			}
 			priCount = 0
 			return false
@@ -311,17 +321,9 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 	fmt.Println("Checking replicas closed on node...")
 	fin, err = waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			fmt.Println("Send kill_partition commands to node...")
-			for _, gpid := range gpids {
-				cmd, err := runShellInput("remote_command -l "+node.IPPort+" replica.kill_partition "+gpid, metaList)
-				if err != nil {
-					return false, err
-				}
-				if err := cmd.Start(); err != nil {
-					return false, err
-				}
+			if err := killPartitions(gpids, node, metaList); err != nil {
+				return false, err
 			}
-			fmt.Println("Sent to " + strconv.Itoa(len(gpids)) + " partitions.")
 		}
 		cmd, err := runShellInput("remote_command -l "+node.IPPort+" perf-counters '.*replica(Count)'", metaList)
 		if err != nil {
@@ -359,7 +361,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		}
 		fmt.Println("Still " + strconv.Itoa(serving+opening+closing) + " replicas not closed on " + node.IPPort)
 		c++
-		return serving + opening + closing == 0, nil
+		return serving+opening+closing == 0, nil
 	}, time.Second, 28)
 	if err != nil {
 		return err
@@ -417,6 +419,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 }
 
 func removeNode(deploy Deployment, metaList string, pmeta string, node Node) error {
+	fmt.Println("Stopping replica node " + node.Name + " of " + node.IPPort + " ...")
 	if err := setMetaLevel("steady", metaList); err != nil {
 		return err
 	}
@@ -426,10 +429,12 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 	}
 
 	// migrate node
+	fmt.Println("Migrating primary replicas out of node...")
 	if err := runSh("migrate_node", "-c", metaList, "-n", node.IPPort, "-t", "run").Run(); err != nil {
 		return err
 	}
 	// wait for pri_count == 0
+	fmt.Println("Wait " + node.IPPort + " to migrate done...")
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		cmd, err := runShellInput("nodes -d", metaList)
@@ -438,28 +443,40 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		}
 		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
-				// TODO: check field length
-				val, err = strconv.Atoi(strings.Fields(line)[3])
-				if err != nil {
-					return false
+				ss := strings.Fields(line)
+				if len(ss) > 3 {
+					val, err = strconv.Atoi(ss[3])
+					if err != nil {
+						return false
+					}
+					return true
 				}
-				return true
 			}
 			return false
 		}); err != nil {
 			return false, err
 		}
-		return val == 0, nil
+		if val == 0 {
+			fmt.Println("Migrate done.")
+			return true, nil
+		} else {
+			fmt.Println("Still " + strconv.Itoa(val) + " primary replicas left on " + node.IPPort)
+			return false, nil
+		}
 	}, time.Second, 0); err != nil {
 		return err
 	}
 	time.Sleep(time.Second)
 
 	// downgrade node and kill partition
-	var gpid []string
+	fmt.Println("Downgrading replicas on node...")
+	var gpids []string
 	if _, err := checkOutput(runSh("downgrade_node", "-c", metaList, "-n", node.IPPort, "-t", "run"), false, func(line string) bool {
 		if strings.HasPrefix(line, "propose ") {
-			gpid = append(gpid, strings.ReplaceAll(strings.Fields(line)[2], ".", " "))
+			ss := strings.Fields(line)
+			if len(ss) > 2 {
+				gpids = append(gpids, strings.ReplaceAll(ss[2], ".", " "))
+			}
 			return true
 		}
 		return false
@@ -467,6 +484,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		return err
 	}
 	// wait for rep_count == 0
+	fmt.Println("Wait " + node.IPPort + " to downgrade done...")
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		cmd, err := runShellInput("nodes -d", metaList)
@@ -485,15 +503,27 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		}); err != nil {
 			return false, err
 		}
-		return val == 0, nil
+		if val == 0 {
+			fmt.Println("Downgrade done.")
+			return true, nil
+		} else {
+			fmt.Println("Still " + strconv.Itoa(val) + " replicas left on " + node.IPPort)
+			return false, nil
+		}
 	}, time.Second, 0); err != nil {
 		return err
 	}
 	time.Sleep(time.Second)
 
+	if err := killPartitions(gpids, node, metaList); err != nil {
+		return err
+	}
+
+	fmt.Println("Stop node by deployment...")
 	if err := deploy.StopNode(node); err != nil {
 		return err
 	}
+	fmt.Println("Stop node by deployment done")
 	time.Sleep(time.Second)
 
 	if err := waitForHealthy(metaList); err != nil {
@@ -551,7 +581,7 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 				time.Sleep(time.Duration(30) * time.Second)
 			}
 		} else {
-			fmt.Println("still "+opCount+" balance operations to do...")
+			fmt.Println("still " + opCount + " balance operations to do...")
 			time.Sleep(time.Duration(10) * time.Second)
 		}
 	}

@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+func killPartitions(gpids []string, node Node, metaList string) error {
+	fmt.Println("Send kill_partition commands to node...")
+	for _, gpid := range gpids {
+		cmd, err := runShellInput("remote_command -l "+node.IPPort+" replica.kill_partition "+gpid, metaList)
+		if err != nil {
+			return err
+		}
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+	}
+	fmt.Println("Sent to " + strconv.Itoa(len(gpids)) + " partitions")
+	return nil
+}
+
 func setMetaLevel(level string, metaList string) error {
 	fmt.Println("Set meta level to " + level + "...")
 	cmd, err := runShellInput("set_meta_level "+level, metaList)
@@ -40,6 +55,7 @@ func setRemoteCommand(pmeta string, attr string, value string, metaList string) 
 }
 
 func waitForHealthy(metaList string) error {
+	fmt.Println("Wait cluster to become healthy...")
 	_, err := waitFor(func() (bool, error) {
 		cmd, err := runShellInput("ls -d", metaList)
 		if err != nil {
@@ -71,7 +87,13 @@ func waitForHealthy(metaList string) error {
 		}); err != nil {
 			return false, err
 		}
-		return count == 0, nil
+		if count == 0 {
+			fmt.Println("Cluster becomes healthy")
+			return true, nil
+		} else {
+			fmt.Println("Cluster not healthy, unhealthy_partition_count = " + strconv.Itoa(count))
+			return false, nil
+		}
 	}, time.Duration(10)*time.Second, 0)
 	return err
 }
