@@ -38,13 +38,13 @@ func setMetaLevel(level string, metaList string) error {
 	return nil
 }
 
-func setRemoteCommand(pmeta string, attr string, value string, metaList string) error {
+func setRemoteCommand(pmeta string, attr string, value string, metaList string, pattern string) error {
 	fmt.Println("Set " + attr + " to " + value + "...")
 	cmd, err := runShellInput(fmt.Sprintf("remote_command -l %s %s %s", pmeta, attr, value), metaList)
 	if err != nil {
 		return err
 	}
-	ok, out, err := checkOutputContainsOnce(cmd, true, "OK")
+	ok, out, err := checkOutputContainsOnce(cmd, true, pattern)
 	if err != nil {
 		return err
 	}

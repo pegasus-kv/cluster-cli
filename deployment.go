@@ -130,10 +130,10 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 		nodes[i] = node
 		addrs[i] = node.IPPort
 	}
-	if err := setRemoteCommand(pmeta, "meta.lb.assign_secondary_black_list", strings.Join(addrs, ","), metaList); err != nil {
+	if err := setRemoteCommand(pmeta, "meta.lb.assign_secondary_black_list", strings.Join(addrs, ","), metaList, "set ok"); err != nil {
 		return err
 	}
-	if err := setRemoteCommand(pmeta, "meta.live_percentage", "0", metaList); err != nil {
+	if err := setRemoteCommand(pmeta, "meta.live_percentage", "0", metaList, "OK"); err != nil {
 		return err
 	}
 
@@ -183,7 +183,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		}
 	}
 
-	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "DEFAULT", metaList); err != nil {
+	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "DEFAULT", metaList, "OK"); err != nil {
 		return err
 	}
 	if nodeNames == nil {
@@ -215,7 +215,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node Node) error {
 	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name, node.IPPort)
 
-	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "0", metaList); err != nil {
+	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "0", metaList, "OK"); err != nil {
 		return err
 	}
 
@@ -376,7 +376,7 @@ func rollingUpdateNode(deploy Deployment, pmeta string, metaList string, node No
 		return err
 	}
 
-	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "100", metaList); err != nil {
+	if err := setRemoteCommand(pmeta, "meta.lb.add_secondary_max_count_for_one_node", "100", metaList, "OK"); err != nil {
 		return err
 	}
 
@@ -424,7 +424,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		return err
 	}
 
-	if err := setRemoteCommand(pmeta, "meta.lb.assign_delay_ms", "10", metaList); err != nil {
+	if err := setRemoteCommand(pmeta, "meta.lb.assign_delay_ms", "10", metaList, "OK"); err != nil {
 		return err
 	}
 
@@ -530,7 +530,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		return err
 	}
 
-	if err := setRemoteCommand(pmeta, "meta.lb.assign_delay_ms", "DEFAULT", metaList); err != nil {
+	if err := setRemoteCommand(pmeta, "meta.lb.assign_delay_ms", "DEFAULT", metaList, "OK"); err != nil {
 		return err
 	}
 	return nil
@@ -538,7 +538,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 
 func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 	if primaryOnly {
-		if err := setRemoteCommand(pmeta, "meta.lb.only_move_primary", "true", metaList); err != nil {
+		if err := setRemoteCommand(pmeta, "meta.lb.only_move_primary", "true", metaList, "OK"); err != nil {
 			return err
 		}
 	}
@@ -591,7 +591,7 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 	}
 
 	if primaryOnly {
-		if err := setRemoteCommand(pmeta, "meta.lb.only_move_primary", "false", metaList); err != nil {
+		if err := setRemoteCommand(pmeta, "meta.lb.only_move_primary", "false", metaList, "OK"); err != nil {
 			return err
 		}
 	}
