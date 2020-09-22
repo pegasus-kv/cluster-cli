@@ -33,7 +33,7 @@ var (
 		Use:   "add-node",
 		Short: "add a list of nodes to cluster",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if nodes == nil {
+			if len(nodes) == 0 {
 				return errors.New("list of nodes must be provided")
 			}
 			return nil
@@ -50,7 +50,7 @@ var (
 		Use:   "remove-node",
 		Short: "remove a list of nodes from cluster",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if nodes == nil {
+			if len(nodes) == 0 {
 				return errors.New("list of nodes must be provided")
 			}
 			return nil

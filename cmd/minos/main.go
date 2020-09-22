@@ -1,9 +1,12 @@
 package main
 
 import (
+	"os"
 	"pegasus-cluster-cli/cmd"
 )
 
 func main() {
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
