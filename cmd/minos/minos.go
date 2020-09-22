@@ -60,8 +60,11 @@ func NewMinosDeployment(cluster string, confPath string, clientDir string) (*Min
 
 func (m *Minos) StartNode(node pegasus.Node) error {
 	cmd := m.execDeploy("bootstrap", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return pegasus.NewDeployError("failed to execute minos script", out)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	if err := cmd.Run(); err != nil {
+		return errors.New("failed to execute minos script")
 	}
 	return nil
 }
