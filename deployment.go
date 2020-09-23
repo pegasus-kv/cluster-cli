@@ -459,10 +459,9 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		if val == 0 {
 			fmt.Println("Migrate done.")
 			return true, nil
-		} else {
-			fmt.Println("Still " + strconv.Itoa(val) + " primary replicas left on " + node.IPPort)
-			return false, nil
 		}
+		fmt.Println("Still " + strconv.Itoa(val) + " primary replicas left on " + node.IPPort)
+		return false, nil
 	}, time.Second, 0); err != nil {
 		return err
 	}
@@ -506,10 +505,9 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		if val == 0 {
 			fmt.Println("Downgrade done.")
 			return true, nil
-		} else {
-			fmt.Println("Still " + strconv.Itoa(val) + " replicas left on " + node.IPPort)
-			return false, nil
 		}
+		fmt.Println("Still " + strconv.Itoa(val) + " replicas left on " + node.IPPort)
+		return false, nil
 	}, time.Second, 0); err != nil {
 		return err
 	}

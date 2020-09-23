@@ -90,10 +90,9 @@ func waitForHealthy(metaList string) error {
 		if count == 0 {
 			fmt.Println("Cluster becomes healthy")
 			return true, nil
-		} else {
-			fmt.Println("Cluster not healthy, unhealthy_partition_count = " + strconv.Itoa(count))
-			return false, nil
 		}
+		fmt.Println("Cluster not healthy, unhealthy_partition_count = " + strconv.Itoa(count))
+		return false, nil
 	}, time.Duration(10)*time.Second, 0)
 	return err
 }
