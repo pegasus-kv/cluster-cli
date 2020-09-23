@@ -91,9 +91,9 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&metaList, "meta-list", "m", "", "a list of meta servers(ip:port), seperated by comma")
 	RootCmd.PersistentFlags().StringArrayVarP(&nodes, "node", "n", []string{}, "list of nodes to take action on")
 	RootCmd.PersistentFlags().StringVar(&shellDir, "shell-dir", os.Getenv("PEGASUS_SHELL_PATH"), "directory of pegasus binary package. Could be set from env PEGASUS_SHELL_PATH")
-	RootCmd.MarkPersistentFlagRequired("cluster")
-	RootCmd.MarkPersistentFlagRequired("meta-list")
-	RootCmd.MarkPersistentFlagDirname("shell-dir")
+	_ := RootCmd.MarkPersistentFlagRequired("cluster")
+	_ := RootCmd.MarkPersistentFlagRequired("meta-list")
+	_ := RootCmd.MarkPersistentFlagDirname("shell-dir")
 	rollingUpdateCmd.Flags().BoolVarP(&all, "all", "a", false, "whether to update all nodes")
 	RootCmd.AddCommand(addNodeCmd, removeNodeCmd, rollingUpdateCmd)
 }

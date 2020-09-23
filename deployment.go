@@ -206,7 +206,9 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		}
 		fmt.Println("Rolling update collectors done")
 
-		rebalanceCluster(pmeta, metaList, false)
+		if err := rebalanceCluster(pmeta, metaList, false); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -446,10 +448,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 				ss := strings.Fields(line)
 				if len(ss) > 3 {
 					val, err = strconv.Atoi(ss[3])
-					if err != nil {
-						return false
-					}
-					return true
+					return err == nil
 				}
 			}
 			return false
@@ -493,10 +492,7 @@ func removeNode(deploy Deployment, metaList string, pmeta string, node Node) err
 		if _, err := checkOutput(cmd, false, func(line string) bool {
 			if strings.Contains(line, node.IPPort) {
 				val, err = strconv.Atoi(strings.Fields(line)[2])
-				if err != nil {
-					return false
-				}
-				return true
+				return err == nil
 			}
 			return false
 		}); err != nil {
@@ -566,6 +562,9 @@ func rebalanceCluster(pmeta string, metaList string, primaryOnly bool) error {
 			}
 			return false
 		})
+		if err != nil {
+			return err
+		}
 		if opCount == "" {
 			break
 		}
