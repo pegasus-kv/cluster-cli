@@ -24,7 +24,7 @@ func runShellInput(input string, arg ...string) (*exec.Cmd, error) {
 	defer stdin.Close()
 
 	if _, err := io.WriteString(stdin, input+"\n"); err != nil {
-		return err
+		return nil, err
 	}
 	return cmd, nil
 }

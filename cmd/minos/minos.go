@@ -26,9 +26,9 @@ func init() {
 	cmd.RootCmd.PersistentFlags().StringVar(&pegasusConf, "pegasus-conf", os.Getenv("PEGASUS_CONFIG"), "directory where the config files of pegasus are stored, usually deployment-config/xiaomi-config/conf/pegasus. Could be set from env PEGASUS_CONFIG")
 	cmd.RootCmd.PersistentFlags().StringVar(&minosClientDir, "minos-client-dir", os.Getenv("MINOS_CLIENT_DIR"), "directory of the executable file of minos(deploy). Could be set from env MINOS_CLIENT_DIR")
 	cmd.RootCmd.PersistentFlags().StringVar(&minosConf, "minos-conf", os.Getenv("MINOS_CONFIG_FILE"), "location of minos configuration file. Could be set from env MINOS_CONFIG_FILE")
-	_ := cmd.RootCmd.MarkPersistentFlagDirname("pegasus-conf")
-	_ := cmd.RootCmd.MarkPersistentFlagDirname("minos-client-dir")
-	_ := cmd.RootCmd.MarkPersistentFlagFilename("minos-conf", "cfg")
+	_ = cmd.RootCmd.MarkPersistentFlagDirname("pegasus-conf")
+	_ = cmd.RootCmd.MarkPersistentFlagDirname("minos-client-dir")
+	_ = cmd.RootCmd.MarkPersistentFlagFilename("minos-conf", "cfg")
 	cmd.Validate = func() error {
 		if pegasusConf == "" {
 			return errors.New("pegasus-config is empty, set flag --pegasus-conf or env PEGASUS_CONFIG")
