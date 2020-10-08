@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package main
 
 import (
@@ -19,9 +36,9 @@ type Minos struct {
 
 func init() {
 	var (
-		pegasusConf string
+		pegasusConf    string
 		minosClientDir string
-		minosConf string
+		minosConf      string
 	)
 	cmd.RootCmd.PersistentFlags().StringVar(&pegasusConf, "pegasus-conf", os.Getenv("PEGASUS_CONFIG"), "directory where the config files of pegasus are stored, usually deployment-config/xiaomi-config/conf/pegasus. Could be set from env PEGASUS_CONFIG")
 	cmd.RootCmd.PersistentFlags().StringVar(&minosClientDir, "minos-client-dir", os.Getenv("MINOS_CLIENT_DIR"), "directory of the executable file of minos(deploy). Could be set from env MINOS_CLIENT_DIR")
@@ -120,8 +137,8 @@ func (m *Minos) ListAllNodes() ([]pegasus.Node, error) {
 			job = pegasus.JobReplica
 		}
 		nodes = append(nodes, pegasus.Node{
-			Job: job,
-			Name: strconv.Itoa(v.Task),
+			Job:    job,
+			Name:   strconv.Itoa(v.Task),
 			IPPort: k,
 		})
 	}
