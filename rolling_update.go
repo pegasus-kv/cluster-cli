@@ -97,7 +97,7 @@ func rollingUpdateNode(deploy Deployment, client MetaAPI, node Node) error {
 		priCount := -1
 		for _, n := range nodes {
 			if n.IPPort == node.IPPort {
-				priCount = node.Info.PrimaryCount
+				priCount = n.Info.PrimaryCount
 				break
 			}
 		}
