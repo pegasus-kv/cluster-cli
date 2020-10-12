@@ -1,9 +1,9 @@
 package pegasus
 
 import (
-	"errors"
 	"fmt"
 	"os/exec"
+	"pegasus-cluster-cli/client"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,18 +12,18 @@ import (
 
 type MetaAPI interface {
 	GetHealthyInfo() (*HealthyInfo, error)
-	RemoteCommand(string, string) error
+	RemoteCommand(string, ...string) (string, error)
 	SetMetaLevel(string) error
 	Rebalance(bool) error
 	Migrate(string) error
 	Downgrade(string) ([]string, error)
-	KillPartitions(string, []string) error
 	ListNodes() ([]Node, error)
 }
 
 type MetaClient struct {
 	PrimaryMeta string
 	MetaList    string
+	cmdClient   *client.RemoteCmdClient
 }
 
 func NewMetaClient(cluster string, metaList string) (*MetaClient, error) {
@@ -32,11 +32,12 @@ func NewMetaClient(cluster string, metaList string) (*MetaClient, error) {
 		return nil, err
 	}
 	if info.Cluster != cluster {
-		return nil, errors.New(fmt.Sprintf("cluster name and meta list not matched, got '%s'", info.Cluster))
+		return nil, fmt.Errorf("cluster name and meta list not matched, got '%s'", info.Cluster)
 	}
 	return &MetaClient{
 		PrimaryMeta: info.PrimaryMeta,
 		MetaList:    metaList,
+		cmdClient:   client.NewMetaRemoteCmdClient(info.PrimaryMeta),
 	}, nil
 }
 
@@ -53,10 +54,10 @@ func (c *MetaClient) GetHealthyInfo() (*HealthyInfo, error) {
 	ok := false
 	var (
 		partitionCount int
-		fullyHealthy int
-		unhealthy int
+		fullyHealthy   int
+		unhealthy      int
 		writeUnhealthy int
-		readUnhealthy int
+		readUnhealthy  int
 	)
 	out, err := checkOutput(cmd, false, func(line string) bool {
 		if flag {
@@ -100,11 +101,15 @@ func (c *MetaClient) GetHealthyInfo() (*HealthyInfo, error) {
 	}
 	return &HealthyInfo{
 		PartitionCount: partitionCount,
-		FullyHealthy: fullyHealthy,
-		Unhealthy: unhealthy,
+		FullyHealthy:   fullyHealthy,
+		Unhealthy:      unhealthy,
 		WriteUnhealthy: writeUnhealthy,
-		ReadUnhealthy: readUnhealthy,
+		ReadUnhealthy:  readUnhealthy,
 	}, nil
+}
+
+func (c *MetaClient) RemoteCommand(command string, args ...string) (string, error) {
+	return c.cmdClient.Call(command, args)
 }
 
 func (c *MetaClient) SetMetaLevel(level string) error {
@@ -123,24 +128,9 @@ func (c *MetaClient) SetMetaLevel(level string) error {
 	return nil
 }
 
-func (c *MetaClient) RemoteCommand(command string, pattern string) error {
-	cmd, err := c.buildCmd(fmt.Sprintf("remote_command -l %s %s", c.PrimaryMeta, command))
-	if err != nil {
-		return err
-	}
-	ok, out, err := checkOutputContainsOnce(cmd, true, pattern)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return NewCommandError(fmt.Sprintf("remote command '%s' for %s failed", command, c.PrimaryMeta), out)
-	}
-	return nil
-}
-
 func (c *MetaClient) Rebalance(primaryOnly bool) error {
 	if primaryOnly {
-		if err := c.RemoteCommand("meta.lb.only_move_primary true", "OK"); err != nil {
+		if _, err := c.RemoteCommand("meta.lb.only_move_primary", "true"); err != nil {
 			return err
 		}
 	}
@@ -177,7 +167,7 @@ func (c *MetaClient) Rebalance(primaryOnly bool) error {
 	}
 
 	if primaryOnly {
-		if err := c.RemoteCommand("meta.lb.only_move_primary false", "OK"); err != nil {
+		if _, err := c.RemoteCommand("meta.lb.only_move_primary", "false"); err != nil {
 			return err
 		}
 	}
@@ -207,20 +197,20 @@ func (c *MetaClient) Downgrade(addr string) ([]string, error) {
 	return gpids, nil
 }
 
-func (c *MetaClient) KillPartitions(addr string, gpids []string) error {
-	fmt.Println("Send kill_partition commands to node...")
-	for _, gpid := range gpids {
-		cmd, err := runShellInput("remote_command -l "+addr+" replica.kill_partition "+gpid, c.MetaList)
-		if err != nil {
-			return err
-		}
-		if err := cmd.Start(); err != nil {
-			return err
-		}
-	}
-	fmt.Println("Sent to " + strconv.Itoa(len(gpids)) + " partitions")
-	return nil
-}
+// func (c *MetaClient) KillPartitions(addr string, gpids []string) error {
+// 	fmt.Println("Send kill_partition commands to node...")
+// 	for _, gpid := range gpids {
+// 		cmd, err := runShellInput("remote_command -l "+addr+" replica.kill_partition "+gpid, c.MetaList)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		if err := cmd.Start(); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	fmt.Println("Sent to " + strconv.Itoa(len(gpids)) + " partitions")
+// 	return nil
+// }
 
 func (c *MetaClient) ListNodes() ([]Node, error) {
 	cmd, err := c.buildCmd("nodes -d")
@@ -246,9 +236,9 @@ func (c *MetaClient) ListNodes() ([]Node, error) {
 					return false
 				}
 				info := &NodeInfo{
-					Status: ss[1],
-					ReplicaCount: replica,
-					PrimaryCount: primary,
+					Status:         ss[1],
+					ReplicaCount:   replica,
+					PrimaryCount:   primary,
 					SecondaryCount: secondary,
 				}
 				nodes = append(nodes, Node{JobReplica, "", ss[0], info})

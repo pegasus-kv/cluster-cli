@@ -3,6 +3,7 @@ package pegasus
 import (
 	"errors"
 	"fmt"
+	"pegasus-cluster-cli/client"
 	"strconv"
 	"strings"
 	"time"
@@ -27,10 +28,10 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 		nodes[i] = node
 		addrs[i] = node.IPPort
 	}
-	if err := client.RemoteCommand("meta.lb.assign_secondary_black_list " + strings.Join(addrs, ","), "set ok"); err != nil {
+	if _, err := client.RemoteCommand("meta.lb.assign_secondary_black_list", strings.Join(addrs, ",")); err != nil {
 		return err
 	}
-	if err := client.RemoteCommand("meta.live_percentage 0", "OK"); err != nil {
+	if _, err := client.RemoteCommand("meta.live_percentage", "0"); err != nil {
 		return err
 	}
 
@@ -44,26 +45,26 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 	return nil
 }
 
-func removeNode(deploy Deployment, client MetaAPI, node Node) error {
+func removeNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 	fmt.Println("Stopping replica node " + node.Name + " of " + node.IPPort + " ...")
-	if err := client.SetMetaLevel("steady"); err != nil {
+	if err := metaClient.SetMetaLevel("steady"); err != nil {
 		return err
 	}
 
-	if err := client.RemoteCommand("meta.lb.assign_delay_ms 10", "OK"); err != nil {
+	if _, err := metaClient.RemoteCommand("meta.lb.assign_delay_ms", "10"); err != nil {
 		return err
 	}
 
 	// migrate node
 	fmt.Println("Migrating primary replicas out of node...")
-	if err := client.Migrate(node.IPPort); err != nil {
+	if err := metaClient.Migrate(node.IPPort); err != nil {
 		return err
 	}
 	// wait for pri_count == 0
 	fmt.Println("Wait " + node.IPPort + " to migrate done...")
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
-		nodes, err := client.ListNodes()
+		nodes, err := metaClient.ListNodes()
 		if err != nil {
 			return false, err
 		}
@@ -86,7 +87,7 @@ func removeNode(deploy Deployment, client MetaAPI, node Node) error {
 
 	// downgrade node and kill partition
 	fmt.Println("Downgrading replicas on node...")
-	gpids, err := client.Downgrade(node.IPPort)
+	gpids, err := metaClient.Downgrade(node.IPPort)
 	if err != nil {
 		return err
 	}
@@ -94,7 +95,7 @@ func removeNode(deploy Deployment, client MetaAPI, node Node) error {
 	fmt.Println("Wait " + node.IPPort + " to downgrade done...")
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
-		nodes, err := client.ListNodes()
+		nodes, err := metaClient.ListNodes()
 		if err != nil {
 			return false, err
 		}
@@ -115,8 +116,11 @@ func removeNode(deploy Deployment, client MetaAPI, node Node) error {
 	}
 	time.Sleep(time.Second)
 
-	if err := client.KillPartitions(node.IPPort, gpids); err != nil {
-		return err
+	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort)
+	for _, gpid := range gpids {
+		if _, err := remoteCmdClient.KillPartition(gpid); err != nil {
+			return err
+		}
 	}
 
 	fmt.Println("Stop node by deployment...")
@@ -128,7 +132,7 @@ func removeNode(deploy Deployment, client MetaAPI, node Node) error {
 
 	fmt.Println("Wait cluster to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		info, err := client.GetHealthyInfo()
+		info, err := metaClient.GetHealthyInfo()
 		if err != nil {
 			return false, err
 		}
@@ -142,7 +146,7 @@ func removeNode(deploy Deployment, client MetaAPI, node Node) error {
 		return err
 	}
 
-	if err := client.RemoteCommand("meta.lb.assign_delay_ms DEFAULT", "OK"); err != nil {
+	if _, err := metaClient.RemoteCommand("meta.lb.assign_delay_ms", "DEFAULT"); err != nil {
 		return err
 	}
 	return nil

@@ -3,6 +3,7 @@ package pegasus
 import (
 	"errors"
 	"fmt"
+	"pegasus-cluster-cli/client"
 	"strconv"
 	"time"
 )
@@ -43,7 +44,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		}
 	}
 
-	if err := client.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node DEFAULT", "OK"); err != nil {
+	if _, err := client.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "DEFAULT"); err != nil {
 		return err
 	}
 	if nodeNames == nil {
@@ -74,10 +75,10 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	return nil
 }
 
-func rollingUpdateNode(deploy Deployment, client MetaAPI, node Node) error {
+func rollingUpdateNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name, node.IPPort)
 
-	if err := client.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node 0", "OK"); err != nil {
+	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
 		return err
 	}
 
@@ -85,12 +86,12 @@ func rollingUpdateNode(deploy Deployment, client MetaAPI, node Node) error {
 	fmt.Println("Migrating primary replicas out of node...")
 	fin, err := waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			if err := client.Migrate(node.IPPort); err != nil {
+			if err := metaClient.Migrate(node.IPPort); err != nil {
 				return false, err
 			}
 			fmt.Println("Sent migrate propose")
 		}
-		nodes, err := client.ListNodes()
+		nodes, err := metaClient.ListNodes()
 		if err != nil {
 			return false, err
 		}
@@ -120,13 +121,13 @@ func rollingUpdateNode(deploy Deployment, client MetaAPI, node Node) error {
 	var gpids []string
 	fin, err = waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			gpids, err = client.Downgrade(node.IPPort)
+			gpids, err = metaClient.Downgrade(node.IPPort)
 			if err != nil {
 				return false, err
 			}
 			fmt.Println("Sent downgrade propose")
 		}
-		nodes, err := client.ListNodes()
+		nodes, err := metaClient.ListNodes()
 		if err != nil {
 			return false, err
 		}
@@ -151,9 +152,45 @@ func rollingUpdateNode(deploy Deployment, client MetaAPI, node Node) error {
 	time.Sleep(time.Second)
 
 	// TODO: Check replicas closed on node here
-	// TODO: flush log
+	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort)
+	c = 0
+	fmt.Println("Checking replicas closed on node...")
+	fin, err = waitFor(func() (bool, error) {
+		if c % 10 == 0 {
+			fmt.Println("Send kill_partition commands to node...")
+			for _, gpid := range gpids {
+				if _, err := remoteCmdClient.KillPartition(gpid); err != nil {
+					return false, err
+				}
+			}
+			fmt.Printf("Sent to %d partitions.", len(gpids))
+		}
+		counters, err := remoteCmdClient.GetPerfCounters(".*replica(Count)")
+		if err != nil {
+			return false, err
+		}
+		count := 0
+		for _, counter := range counters {
+			count += int(counter.Value)
+		}
+		fmt.Printf("Still %d replicas not closed on %s", count, node.IPPort)
+		c++
+		return count == 0, nil
+	}, time.Second, 28)
+	if err != nil {
+		return err
+	}
+	if fin {
+		fmt.Println("Close done.")
+	} else {
+		fmt.Println("Close timeout.")
+	}
 
-	if err := client.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node 100", "OK"); err != nil {
+	if _, err := remoteCmdClient.Call("flush_log", nil); err != nil {
+		return err
+	}
+
+	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "100"); err != nil {
 		return err
 	}
 
@@ -165,7 +202,7 @@ func rollingUpdateNode(deploy Deployment, client MetaAPI, node Node) error {
 
 	fmt.Println("Wait " + node.IPPort + " to become alive...")
 	if _, err := waitFor(func() (bool, error) {
-		nodes, err := client.ListNodes()
+		nodes, err := metaClient.ListNodes()
 		if err != nil {
 			return false, err
 		}
@@ -183,7 +220,7 @@ func rollingUpdateNode(deploy Deployment, client MetaAPI, node Node) error {
 
 	fmt.Println("Wait " + node.IPPort + " to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		info, err := client.GetHealthyInfo()
+		info, err := metaClient.GetHealthyInfo()
 		if err != nil {
 			return false, err
 		}
