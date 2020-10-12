@@ -101,7 +101,7 @@ func GetClusterInfo(metaList string) (*ClusterInfo, error) {
 				i := strings.LastIndexByte(s, '=')
 				if i != -1 {
 					n, err := strconv.Atoi(s[i+1:])
-					if err != nil {
+					if err == nil {
 						opCount = &n
 					}
 				}
