@@ -107,7 +107,7 @@ func GetClusterInfo(metaList string) (*ClusterInfo, error) {
 				}
 			}
 		}
-		return primaryMeta != nil && clusterName != nil
+		return primaryMeta != nil && clusterName != nil && opCount != nil
 	})
 	if err != nil {
 		return nil, err
