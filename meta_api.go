@@ -11,7 +11,7 @@ import (
 )
 
 type MetaAPI interface {
-	GetHealthyInfo() (*HealthyInfo, error)
+	GetHealthyInfo() ([]HealthyInfo, error)
 	RemoteCommand(string, ...string) (string, error)
 	SetMetaLevel(string) error
 	Rebalance(bool) error
@@ -45,47 +45,46 @@ func (c *MetaClient) buildCmd(command string) (*exec.Cmd, error) {
 	return runShellInput(command, c.MetaList)
 }
 
-func (c *MetaClient) GetHealthyInfo() (*HealthyInfo, error) {
+func (c *MetaClient) GetHealthyInfo() ([]HealthyInfo, error) {
 	cmd, err := c.buildCmd("ls -d")
 	if err != nil {
 		return nil, err
 	}
 	flag := false
-	ok := false
-	var (
-		partitionCount int
-		fullyHealthy   int
-		unhealthy      int
-		writeUnhealthy int
-		readUnhealthy  int
-	)
-	out, err := checkOutput(cmd, false, func(line string) bool {
+	var infos []HealthyInfo
+	_, err = checkOutput(cmd, false, func(line string) bool {
 		if flag {
 			ss := strings.Fields(line)
 			if len(ss) < 7 {
 				flag = false
 			} else {
-				partitionCount, err = strconv.Atoi(ss[2])
+				partitionCount, err := strconv.Atoi(ss[2])
 				if err != nil {
 					return false
 				}
-				fullyHealthy, err = strconv.Atoi(ss[3])
+				fullyHealthy, err := strconv.Atoi(ss[3])
 				if err != nil {
 					return false
 				}
-				unhealthy, err = strconv.Atoi(ss[4])
+				unhealthy, err := strconv.Atoi(ss[4])
 				if err != nil {
 					return false
 				}
-				writeUnhealthy, err = strconv.Atoi(ss[5])
+				writeUnhealthy, err := strconv.Atoi(ss[5])
 				if err != nil {
 					return false
 				}
-				readUnhealthy, err = strconv.Atoi(ss[6])
+				readUnhealthy, err := strconv.Atoi(ss[6])
 				if err != nil {
 					return false
 				}
-				ok = true
+				infos = append(infos, HealthyInfo{
+					PartitionCount: partitionCount,
+					FullyHealthy: fullyHealthy,
+					Unhealthy: unhealthy,
+					WriteUnhealthy: writeUnhealthy,
+					ReadUnhealthy: readUnhealthy,
+				})
 				return true
 			}
 		} else if strings.Contains(line, "  fully_healthy  ") {
@@ -96,16 +95,7 @@ func (c *MetaClient) GetHealthyInfo() (*HealthyInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		return nil, NewCommandError("failed to get healthy info", out)
-	}
-	return &HealthyInfo{
-		PartitionCount: partitionCount,
-		FullyHealthy:   fullyHealthy,
-		Unhealthy:      unhealthy,
-		WriteUnhealthy: writeUnhealthy,
-		ReadUnhealthy:  readUnhealthy,
-	}, nil
+	return infos, nil
 }
 
 func (c *MetaClient) RemoteCommand(command string, args ...string) (string, error) {

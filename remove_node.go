@@ -132,15 +132,17 @@ func removeNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 
 	fmt.Println("Wait cluster to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		info, err := metaClient.GetHealthyInfo()
+		infos, err := metaClient.GetHealthyInfo()
 		if err != nil {
 			return false, err
 		}
-		if info.Unhealthy == 0 {
-			fmt.Println("Cluster becomes healthy")
-			return true, nil
+		count := 0
+		for _, info := range infos {
+			if info.PartitionCount != info.FullyHealthy {
+				count += info.Unhealthy
+			}
 		}
-		fmt.Printf("Cluster not healthy, unhealthy_partition_count = %d\n", info.Unhealthy)
+		fmt.Printf("Cluster not healthy, unhealthy_partition_count = %d\n", count)
 		return false, nil
 	}, time.Duration(10) * time.Second, 0); err != nil {
 		return err

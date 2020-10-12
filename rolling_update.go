@@ -156,14 +156,14 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 	c = 0
 	fmt.Println("Checking replicas closed on node...")
 	fin, err = waitFor(func() (bool, error) {
-		if c % 10 == 0 {
+		if c%10 == 0 {
 			fmt.Println("Send kill_partition commands to node...")
 			for _, gpid := range gpids {
 				if _, err := remoteCmdClient.KillPartition(gpid); err != nil {
 					return false, err
 				}
 			}
-			fmt.Printf("Sent to %d partitions.", len(gpids))
+			fmt.Printf("Sent to %d partitions.\n", len(gpids))
 		}
 		counters, err := remoteCmdClient.GetPerfCounters(".*replica(Count)")
 		if err != nil {
@@ -173,7 +173,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 		for _, counter := range counters {
 			count += int(counter.Value)
 		}
-		fmt.Printf("Still %d replicas not closed on %s", count, node.IPPort)
+		fmt.Printf("Still %d replicas not closed on %s\n", count, node.IPPort)
 		c++
 		return count == 0, nil
 	}, time.Second, 28)
@@ -220,17 +220,19 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 
 	fmt.Println("Wait " + node.IPPort + " to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		info, err := metaClient.GetHealthyInfo()
+		infos, err := metaClient.GetHealthyInfo()
 		if err != nil {
 			return false, err
 		}
-		if info.Unhealthy == 0 {
-			fmt.Println("Cluster becomes healthy")
-			return true, nil
+		count := 0
+		for _, info := range infos {
+			if info.PartitionCount != info.FullyHealthy {
+				count++
+			}
 		}
-		fmt.Printf("Cluster not healthy, unhealthy_partition_count = %d\n", info.Unhealthy)
+		fmt.Printf("Cluster not healthy, unhealthy_partition_count = %d\n", count)
 		return false, nil
-	}, time.Duration(10) * time.Second, 0); err != nil {
+	}, time.Duration(10)*time.Second, 0); err != nil {
 		return err
 	}
 
