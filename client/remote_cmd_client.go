@@ -73,14 +73,16 @@ func (c *RemoteCmdClient) KillPartition(gpid string) (string, error) {
 }
 
 func (c *RemoteCmdClient) Call(command string, arguments []string) (cmdResult string, err error) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancelFn := context.WithTimeout(context.Background(), time.Second*5)
 	thriftArgs := &RemoteCmdServiceCallCommandArgs{
 		Cmd: &Command{Cmd: command, Arguments: arguments},
 	}
 	res, err := c.session.CallWithGpid(ctx, &base.Gpid{}, thriftArgs, "RPC_CLI_CLI_CALL")
 	if err != nil {
+		cancelFn()
 		return "", err
 	}
 	ret, _ := res.(*RemoteCmdServiceCallCommandResult)
+	cancelFn()
 	return ret.GetSuccess(), nil
 }
