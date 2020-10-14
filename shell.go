@@ -52,14 +52,6 @@ func runSh(arg ...string) *exec.Cmd {
 	return cmd
 }
 
-func startRunShellInput(input string, arg ...string) error {
-	cmd, err := runShellInput(input, arg...)
-	if err != nil {
-		return err
-	}
-	return cmd.Run()
-}
-
 func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]byte, error) {
 	var (
 		out []byte

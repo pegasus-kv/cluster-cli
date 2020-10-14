@@ -89,7 +89,7 @@ func (m *Minos) StartNode(node pegasus.Node) error {
 func (m *Minos) StopNode(node pegasus.Node) error {
 	cmd := m.execDeploy("stop", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name, "--skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return pegasus.NewDeployError("failed to execute minos script", out)
+		return pegasus.NewCommandError("failed to execute minos script", out)
 	}
 	return nil
 }
@@ -98,7 +98,7 @@ func (m *Minos) RollingUpdate(node pegasus.Node) error {
 	cmd := m.execDeploy("rolling_update", "pegasus", m.Cluster, "--job", node.Job.String(),
 		"--task", node.Name, "--update_package --update_config --time_interval 20 --skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return pegasus.NewDeployError("failed to execute minos script", out)
+		return pegasus.NewCommandError("failed to execute minos script", out)
 	}
 	return nil
 }
@@ -140,6 +140,7 @@ func (m *Minos) ListAllNodes() ([]pegasus.Node, error) {
 			Job:    job,
 			Name:   strconv.Itoa(v.Task),
 			IPPort: k,
+			Info: nil,
 		})
 	}
 	return nodes, nil
