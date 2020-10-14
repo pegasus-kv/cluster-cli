@@ -142,8 +142,12 @@ func removeNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 				count += info.Unhealthy
 			}
 		}
-		fmt.Printf("Cluster not healthy, unhealthy_partition_count = %d\n", count)
-		return false, nil
+		if count != 0 {
+			fmt.Printf("Cluster not healthy, unhealthy_partition_count = %d\n", count)
+			return false, nil
+		}
+		fmt.Println("Cluster becomes healthy")
+		return true, nil
 	}, time.Duration(10) * time.Second, 0); err != nil {
 		return err
 	}
