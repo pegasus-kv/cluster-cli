@@ -27,7 +27,7 @@ import (
 )
 
 func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
-	if err := initNodes(deploy); err != nil {
+	if err := listAndCacheAllNodes(deploy); err != nil {
 		return err
 	}
 	client, err := NewMetaClient(cluster, metaList)

@@ -24,10 +24,26 @@ import (
 	"strings"
 )
 
+// Deployment is the abstraction of a deployment automation system that's capable of
+// mananging all the nodes in a Pegasus cluster.
+// pegasus-cluster-cli manipulates the cluster based on Deployment, using strategies
+// with higher availability, less performance downgrade of the online service.
 type Deployment interface {
+
+	// Start a Pegasus node on the specified machine. A possible implementation may
+	// login to the machine, download the binary package and config, and launch the
+	// process.
 	StartNode(Node) error
+
+	// Stop a Pegasus node on the specified machine. A possible implementation may
+	// login to the machine, and kill the process (via supervisord).
 	StopNode(Node) error
+
+	// Rolling-update a Pegasus node on the specified machine. A possible implementation
+	// may login to the machine, redownload the binary package and config, restart the process.
 	RollingUpdate(Node) error
+
+	// Retrieves the nodes information in the Pegasus cluster.
 	ListAllNodes() ([]Node, error)
 }
 

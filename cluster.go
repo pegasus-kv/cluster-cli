@@ -71,7 +71,7 @@ type NodeInfo struct {
 
 var globalAllNodes []Node
 
-func initNodes(deploy Deployment) error {
+func listAndCacheAllNodes(deploy Deployment) error {
 	res, err := deploy.ListAllNodes()
 	if err != nil {
 		return err
