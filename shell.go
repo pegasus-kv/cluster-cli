@@ -32,8 +32,7 @@ func SetShellDir(dir string) {
 }
 
 func runShellInput(input string, arg ...string) (*exec.Cmd, error) {
-	cmd := exec.Command("./run.sh", append([]string{"shell", "--cluster"}, arg...)...)
-	cmd.Dir = shellDir
+	cmd := runSh(append([]string{"shell", "--cluster"}, arg...)...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

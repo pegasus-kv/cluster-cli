@@ -29,7 +29,7 @@ import (
 	"strconv"
 )
 
-type Minos struct {
+type minosDeployment struct {
 	Cluster   string
 	ClientDir string
 }
@@ -46,7 +46,7 @@ func init() {
 	_ = cmd.RootCmd.MarkPersistentFlagDirname("pegasus-conf")
 	_ = cmd.RootCmd.MarkPersistentFlagDirname("minos-client-dir")
 	_ = cmd.RootCmd.MarkPersistentFlagFilename("minos-conf", "cfg")
-	cmd.Validate = func() error {
+	cmd.ValidateEnvsHook = func() error {
 		if pegasusConf == "" {
 			return errors.New("pegasus-config is empty, set flag --pegasus-conf or env PEGASUS_CONFIG")
 		}
@@ -59,7 +59,7 @@ func init() {
 		return nil
 	}
 	pegasus.CreateDeployment = func(cluster string) pegasus.Deployment {
-		d, err := NewMinosDeployment(cluster, pegasusConf, minosClientDir)
+		d, err := newMinosDeployment(cluster, pegasusConf, minosClientDir)
 		if err != nil {
 			panic(err)
 		}
@@ -67,15 +67,15 @@ func init() {
 	}
 }
 
-func NewMinosDeployment(cluster string, confPath string, clientDir string) (*Minos, error) {
+func newMinosDeployment(cluster string, confPath string, clientDir string) (*minosDeployment, error) {
 	clusterCfg := path.Join(confPath, "pegasus-"+cluster+".cfg")
 	if !fileExists(clusterCfg) {
 		return nil, errors.New("config file for cluster '" + cluster + "' not found")
 	}
-	return &Minos{cluster, clientDir}, nil
+	return &minosDeployment{cluster, clientDir}, nil
 }
 
-func (m *Minos) StartNode(node pegasus.Node) error {
+func (m *minosDeployment) StartNode(node pegasus.Node) error {
 	cmd := m.execDeploy("bootstrap", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -86,7 +86,7 @@ func (m *Minos) StartNode(node pegasus.Node) error {
 	return nil
 }
 
-func (m *Minos) StopNode(node pegasus.Node) error {
+func (m *minosDeployment) StopNode(node pegasus.Node) error {
 	cmd := m.execDeploy("stop", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name, "--skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return pegasus.NewCommandError("failed to execute minos script", out)
@@ -94,7 +94,7 @@ func (m *Minos) StopNode(node pegasus.Node) error {
 	return nil
 }
 
-func (m *Minos) RollingUpdate(node pegasus.Node) error {
+func (m *minosDeployment) RollingUpdate(node pegasus.Node) error {
 	cmd := m.execDeploy("rolling_update", "pegasus", m.Cluster, "--job", node.Job.String(),
 		"--task", node.Name, "--update_package --update_config --time_interval 20 --skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -103,7 +103,7 @@ func (m *Minos) RollingUpdate(node pegasus.Node) error {
 	return nil
 }
 
-func (m *Minos) ListAllNodes() ([]pegasus.Node, error) {
+func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
 	type Node struct {
 		Job  string `json:"job"`
 		Task int    `json:"task_id"`
@@ -140,13 +140,13 @@ func (m *Minos) ListAllNodes() ([]pegasus.Node, error) {
 			Job:    job,
 			Name:   strconv.Itoa(v.Task),
 			IPPort: k,
-			Info: nil,
+			Info:   nil,
 		})
 	}
 	return nodes, nil
 }
 
-func (m *Minos) execDeploy(args ...string) *exec.Cmd {
+func (m *minosDeployment) execDeploy(args ...string) *exec.Cmd {
 	cmd := exec.Command("./deploy", args...)
 	cmd.Dir = m.ClientDir
 	return cmd

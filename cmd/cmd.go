@@ -34,7 +34,7 @@ var (
 	shellDir string
 	RootCmd  = &cobra.Command{
 		Use:   "pegasus-cluster-cli",
-		Short: "A command line app to easily add/remove/update nodes in pegasus cluster",
+		Short: "A command line tool to easily add/remove/update nodes in pegasus cluster",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if shellDir == "" {
 				return errors.New("pegasus-shell-dir is empty, set flag --shell-dir or env PEGASUS_SHELL_PATH")
@@ -48,7 +48,7 @@ var (
 	}
 	addNodeCmd = &cobra.Command{
 		Use:   "add-node",
-		Short: "add a list of nodes to cluster",
+		Short: "Add a list of nodes to the pegasus cluster",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(nodes) == 0 {
 				return errors.New("list of nodes must be provided")
@@ -65,7 +65,7 @@ var (
 	}
 	removeNodeCmd = &cobra.Command{
 		Use:   "remove-node",
-		Short: "remove a list of nodes from cluster",
+		Short: "Remove a list of nodes from cluster",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(nodes) == 0 {
 				return errors.New("list of nodes must be provided")
@@ -82,7 +82,7 @@ var (
 	}
 	rollingUpdateCmd = &cobra.Command{
 		Use:   "rolling-update",
-		Short: "update a list of nodes or update all meta/replica/collector",
+		Short: "Update a list of replica nodes or update all meta/replica/collector nodes",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if all {
 				nodes = nil
