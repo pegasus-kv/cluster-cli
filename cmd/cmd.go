@@ -40,8 +40,8 @@ var (
 				return errors.New("pegasus-shell-dir is empty, set flag --shell-dir or env PEGASUS_SHELL_PATH")
 			}
 			pegasus.SetShellDir(shellDir)
-			if Validate != nil {
-				return Validate()
+			if ValidateEnvsHook != nil {
+				return ValidateEnvsHook()
 			}
 			return nil
 		},
@@ -100,7 +100,9 @@ var (
 		},
 	}
 
-	Validate func() error = nil
+	// ValidateEnvsHook validates the customized environment variables (whhich can set from flags)
+	// before the execution of command.
+	ValidateEnvsHook func() error = nil
 )
 
 func init() {
