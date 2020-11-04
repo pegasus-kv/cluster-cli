@@ -76,6 +76,7 @@ func newMinosDeployment(cluster string, confPath string, clientDir string) (*min
 }
 
 func (m *minosDeployment) StartNode(node pegasus.Node) error {
+	// ./deploy bootstrap pegasus --job <job> --task <task-id>
 	cmd := m.execDeploy("bootstrap", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -87,6 +88,7 @@ func (m *minosDeployment) StartNode(node pegasus.Node) error {
 }
 
 func (m *minosDeployment) StopNode(node pegasus.Node) error {
+	// ./deploy stop pegasus --job <job> --task <task-id> --skip_confirm
 	cmd := m.execDeploy("stop", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name, "--skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return pegasus.NewCommandError("failed to execute minos stop", out)
@@ -108,7 +110,7 @@ func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
 		Job  string `json:"job"`
 		Task int    `json:"task_id"`
 	}
-	var nodeMap map[string]Node
+	var nodeMap map[string]Node // IP:Port as the key
 	req, _ := http.NewRequest("GET", "http://pegasus-gateway.hadoop.srv/endpoints", nil)
 	q := req.URL.Query()
 	q.Add("cluster", m.Cluster)
@@ -119,7 +121,7 @@ func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("failed to fetch for '" + m.Cluster + "' from pegasus-gateway")
+		return nil, errors.New("failed to fetch endpoints of '" + m.Cluster + "' from pegasus-gateway")
 	}
 	defer resp.Body.Close()
 
@@ -138,7 +140,7 @@ func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
 		}
 		nodes = append(nodes, pegasus.Node{
 			Job:    job,
-			Name:   strconv.Itoa(v.Task),
+			Name:   strconv.Itoa(v.Task), // use task id as the name
 			IPPort: k,
 			Info:   nil,
 		})

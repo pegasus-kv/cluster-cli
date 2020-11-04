@@ -36,32 +36,6 @@ type HealthyInfo struct {
 	ReadUnhealthy  int
 }
 
-type JobType int
-
-const (
-	JobMeta      = 0
-	JobReplica   = 1
-	JobCollector = 2
-)
-
-func (j JobType) String() string {
-	switch j {
-	case JobMeta:
-		return "meta"
-	case JobReplica:
-		return "replica"
-	default:
-		return "collector"
-	}
-}
-
-type Node struct {
-	Job    JobType
-	Name   string
-	IPPort string
-	Info   *NodeInfo
-}
-
 type NodeInfo struct {
 	Status         string
 	ReplicaCount   int

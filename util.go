@@ -39,3 +39,16 @@ func waitFor(checker func() (bool, error), interval time.Duration, timeout int) 
 		time.Sleep(interval)
 	}
 }
+
+type CommandError struct {
+	Msg    string
+	Output []byte
+}
+
+func (e *CommandError) Error() string {
+	return e.Msg + ". Output:\n" + string(e.Output)
+}
+
+func NewCommandError(msg string, out []byte) *CommandError {
+	return &CommandError{msg, out}
+}
