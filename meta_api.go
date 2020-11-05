@@ -27,8 +27,10 @@ import (
 	"time"
 )
 
-type MetaAPI interface {
-	GetHealthyInfo() ([]HealthyInfo, error)
+// MetaClient is a suite of API that connects to the Pegasus MetaServer,
+// retrieves the cluster information or controls cluster state.
+type MetaClient interface {
+	GetHealthInfo() ([]*HealthInfo, error)
 	RemoteCommand(string, ...string) (string, error)
 	SetMetaLevel(string) error
 	Rebalance(bool) error
@@ -38,15 +40,17 @@ type MetaAPI interface {
 	GetClusterInfo() (*ClusterInfo, error)
 }
 
+// A MetaClient based on Pegasus shell.
 type shellMetaClient struct {
-	PrimaryMeta string
-	MetaList    string
+	primaryMeta string
+	metaList    string
 	cmdClient   *client.RemoteCmdClient
 }
 
-func NewMetaClient(cluster string, metaList string) (*shellMetaClient, error) {
+// NewMetaClient creates an instance of MetaClient.
+func NewMetaClient(cluster string, metaList string) (MetaClient, error) {
 	c := &shellMetaClient{
-		MetaList: metaList,
+		metaList: metaList,
 	}
 
 	info, err := c.GetClusterInfo()
@@ -56,17 +60,17 @@ func NewMetaClient(cluster string, metaList string) (*shellMetaClient, error) {
 	if info.Cluster != cluster {
 		return nil, fmt.Errorf("cluster name and meta list not matched, got '%s'", info.Cluster)
 	}
-	c.PrimaryMeta = info.PrimaryMeta
+	c.primaryMeta = info.PrimaryMeta
 	c.cmdClient = client.NewMetaRemoteCmdClient(info.PrimaryMeta)
 	return c, nil
 }
 
 func (c *shellMetaClient) buildCmd(command string) (*exec.Cmd, error) {
-	return runShellInput(command, c.MetaList)
+	return runShellInput(command, c.metaList)
 }
 
 func (c *shellMetaClient) GetClusterInfo() (*ClusterInfo, error) {
-	cmd, err := runShellInput("cluster_info", c.MetaList)
+	cmd, err := runShellInput("cluster_info", c.metaList)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +79,7 @@ func (c *shellMetaClient) GetClusterInfo() (*ClusterInfo, error) {
 		clusterName *string
 		opCount     *int
 	)
-	out, err := checkOutput(cmd, true, func(line string) bool {
+	out, err := checkOutputByLine(cmd, true, func(line string) bool {
 		if strings.HasPrefix(line, "primary_meta_server") {
 			ss := strings.Fields(line)
 			if len(ss) > 2 {
@@ -115,14 +119,14 @@ func (c *shellMetaClient) GetClusterInfo() (*ClusterInfo, error) {
 	}, nil
 }
 
-func (c *shellMetaClient) GetHealthyInfo() ([]HealthyInfo, error) {
+func (c *shellMetaClient) GetHealthInfo() ([]*HealthInfo, error) {
 	cmd, err := c.buildCmd("ls -d")
 	if err != nil {
 		return nil, err
 	}
 	flag := false
-	var infos []HealthyInfo
-	_, err = checkOutput(cmd, false, func(line string) bool {
+	var infos []*HealthInfo
+	_, err = checkOutputByLine(cmd, false, func(line string) bool {
 		if flag {
 			ss := strings.Fields(line)
 			if len(ss) < 7 {
@@ -148,7 +152,7 @@ func (c *shellMetaClient) GetHealthyInfo() ([]HealthyInfo, error) {
 				if err != nil {
 					return false
 				}
-				infos = append(infos, HealthyInfo{
+				infos = append(infos, &HealthInfo{
 					PartitionCount: partitionCount,
 					FullyHealthy:   fullyHealthy,
 					Unhealthy:      unhealthy,
@@ -235,7 +239,7 @@ func (c *shellMetaClient) Rebalance(primaryOnly bool) error {
 }
 
 func (c *shellMetaClient) Migrate(addr string) error {
-	if err := runSh("migrate_node", "-c", c.MetaList, "-n", addr, "-t", "run").Run(); err != nil {
+	if err := runSh("migrate_node", "-c", c.metaList, "-n", addr, "-t", "run").Run(); err != nil {
 		return err
 	}
 	return nil
@@ -243,7 +247,7 @@ func (c *shellMetaClient) Migrate(addr string) error {
 
 func (c *shellMetaClient) Downgrade(addr string) ([]string, error) {
 	var gpids []string
-	if _, err := checkOutput(runSh("downgrade_node", "-c", c.MetaList, "-n", addr, "-t run"), false, func(line string) bool {
+	if _, err := checkOutputByLine(runSh("downgrade_node", "-c", c.metaList, "-n", addr, "-t run"), false, func(line string) bool {
 		if strings.HasPrefix(line, "propose ") {
 			ss := strings.Fields(line)
 			if len(ss) > 2 {
@@ -257,21 +261,6 @@ func (c *shellMetaClient) Downgrade(addr string) ([]string, error) {
 	return gpids, nil
 }
 
-// func (c *MetaClient) KillPartitions(addr string, gpids []string) error {
-// 	fmt.Println("Send kill_partition commands to node...")
-// 	for _, gpid := range gpids {
-// 		cmd, err := runShellInput("remote_command -l "+addr+" replica.kill_partition "+gpid, c.MetaList)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		if err := cmd.Start(); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	fmt.Println("Sent to " + strconv.Itoa(len(gpids)) + " partitions")
-// 	return nil
-// }
-
 func (c *shellMetaClient) ListNodes() ([]Node, error) {
 	cmd, err := c.buildCmd("nodes -d")
 	if err != nil {
@@ -279,7 +268,7 @@ func (c *shellMetaClient) ListNodes() ([]Node, error) {
 	}
 	re := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+:\d+`)
 	nodes := []Node{}
-	_, err = checkOutput(cmd, false, func(line string) bool {
+	_, err = checkOutputByLine(cmd, false, func(line string) bool {
 		if re.MatchString(line) {
 			ss := strings.Fields(line)
 			if len(ss) == 5 {

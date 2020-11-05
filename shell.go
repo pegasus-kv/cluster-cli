@@ -52,7 +52,9 @@ func runSh(arg ...string) *exec.Cmd {
 	return cmd
 }
 
-func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]byte, error) {
+// checkOutputByLine runs the command and processes each line in the output
+// using `checker`. If checker returns false, it stops parsing the output.
+func checkOutputByLine(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]byte, error) {
 	var (
 		out []byte
 		err error
@@ -78,7 +80,7 @@ func checkOutput(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]
 
 func checkOutputContainsOnce(cmd *exec.Cmd, stderr bool, substr string) (bool, []byte, error) {
 	count := 0
-	out, err := checkOutput(cmd, stderr, func(line string) bool {
+	out, err := checkOutputByLine(cmd, stderr, func(line string) bool {
 		if strings.Contains(line, substr) {
 			count++
 			return count > 1

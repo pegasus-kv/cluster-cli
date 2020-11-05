@@ -92,7 +92,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	return nil
 }
 
-func rollingUpdateNode(deploy Deployment, metaClient MetaAPI, node Node) error {
+func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) error {
 	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name, node.IPPort)
 
 	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
@@ -237,7 +237,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 
 	fmt.Println("Wait " + node.IPPort + " to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		infos, err := metaClient.GetHealthyInfo()
+		infos, err := metaClient.GetHealthInfo()
 		if err != nil {
 			return false, err
 		}

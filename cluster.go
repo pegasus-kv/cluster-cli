@@ -23,7 +23,7 @@ type ClusterInfo struct {
 	BalanceOperationCount int
 }
 
-type HealthyInfo struct {
+type HealthInfo struct {
 	PartitionCount int
 	FullyHealthy   int
 	Unhealthy      int

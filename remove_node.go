@@ -62,7 +62,7 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 	return nil
 }
 
-func removeNode(deploy Deployment, metaClient MetaAPI, node Node) error {
+func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 	fmt.Println("Stopping replica node " + node.Name + " of " + node.IPPort + " ...")
 	if err := metaClient.SetMetaLevel("steady"); err != nil {
 		return err
@@ -149,7 +149,7 @@ func removeNode(deploy Deployment, metaClient MetaAPI, node Node) error {
 
 	fmt.Println("Wait cluster to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		infos, err := metaClient.GetHealthyInfo()
+		infos, err := metaClient.GetHealthInfo()
 		if err != nil {
 			return false, err
 		}
