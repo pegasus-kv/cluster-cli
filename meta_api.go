@@ -130,7 +130,7 @@ func (c *MetaClient) SetMetaLevel(level string) error {
 		return err
 	}
 	if !ok {
-		return NewCommandError("set meta level to "+level+" failed", out)
+		return newCommandError("set meta level to "+level+" failed", out)
 	}
 	return nil
 }

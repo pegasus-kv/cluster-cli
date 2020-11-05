@@ -91,7 +91,7 @@ func (m *minosDeployment) StopNode(node pegasus.Node) error {
 	// ./deploy stop pegasus --job <job> --task <task-id> --skip_confirm
 	cmd := m.execDeploy("stop", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name, "--skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return pegasus.NewCommandError("failed to execute minos stop", out)
+		return newCommandError("failed to execute minos stop", out)
 	}
 	return nil
 }
@@ -100,7 +100,7 @@ func (m *minosDeployment) RollingUpdate(node pegasus.Node) error {
 	cmd := m.execDeploy("rolling_update", "pegasus", m.Cluster, "--job", node.Job.String(),
 		"--task", node.Name, "--update_package --update_config --time_interval 20 --skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return pegasus.NewCommandError("failed to execute minos rolling_update", out)
+		return newCommandError("failed to execute minos rolling_update", out)
 	}
 	return nil
 }
@@ -162,4 +162,8 @@ func fileExists(path string) bool {
 		panic(err)
 	}
 	return true
+}
+
+func newCommandError(msg string, out []byte) error {
+	return errors.New(msg + ". Output:\n" + string(out))
 }

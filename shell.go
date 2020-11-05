@@ -27,6 +27,7 @@ import (
 
 var shellDir string
 
+// SetShellDir sets the path where Pegasus shell locates.
 func SetShellDir(dir string) {
 	shellDir = dir
 }

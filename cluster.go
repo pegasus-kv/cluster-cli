@@ -104,7 +104,7 @@ func GetClusterInfo(metaList string) (*ClusterInfo, error) {
 		return nil, err
 	}
 	if primaryMeta == nil || clusterName == nil || opCount == nil {
-		return nil, NewCommandError("failed to get cluster info", out)
+		return nil, newCommandError("failed to get cluster info", out)
 	}
 	return &ClusterInfo{
 		Cluster:               *clusterName,
