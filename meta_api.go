@@ -35,34 +35,87 @@ type MetaAPI interface {
 	Migrate(string) error
 	Downgrade(string) ([]string, error)
 	ListNodes() ([]Node, error)
+	GetClusterInfo() (*ClusterInfo, error)
 }
 
-type MetaClient struct {
+type shellMetaClient struct {
 	PrimaryMeta string
 	MetaList    string
 	cmdClient   *client.RemoteCmdClient
 }
 
-func NewMetaClient(cluster string, metaList string) (*MetaClient, error) {
-	info, err := GetClusterInfo(metaList)
+func NewMetaClient(cluster string, metaList string) (*shellMetaClient, error) {
+	c := &shellMetaClient{
+		MetaList: metaList,
+	}
+
+	info, err := c.GetClusterInfo()
 	if err != nil {
 		return nil, err
 	}
 	if info.Cluster != cluster {
 		return nil, fmt.Errorf("cluster name and meta list not matched, got '%s'", info.Cluster)
 	}
-	return &MetaClient{
-		PrimaryMeta: info.PrimaryMeta,
-		MetaList:    metaList,
-		cmdClient:   client.NewMetaRemoteCmdClient(info.PrimaryMeta),
-	}, nil
+	c.PrimaryMeta = info.PrimaryMeta
+	c.cmdClient = client.NewMetaRemoteCmdClient(info.PrimaryMeta)
+	return c, nil
 }
 
-func (c *MetaClient) buildCmd(command string) (*exec.Cmd, error) {
+func (c *shellMetaClient) buildCmd(command string) (*exec.Cmd, error) {
 	return runShellInput(command, c.MetaList)
 }
 
-func (c *MetaClient) GetHealthyInfo() ([]HealthyInfo, error) {
+func (c *shellMetaClient) GetClusterInfo() (*ClusterInfo, error) {
+	cmd, err := runShellInput("cluster_info", c.MetaList)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		primaryMeta *string
+		clusterName *string
+		opCount     *int
+	)
+	out, err := checkOutput(cmd, true, func(line string) bool {
+		if strings.HasPrefix(line, "primary_meta_server") {
+			ss := strings.Fields(line)
+			if len(ss) > 2 {
+				primaryMeta = &ss[2]
+			}
+		} else if strings.HasPrefix(line, "zookeeper_root") {
+			ss := strings.Fields(line)
+			if len(ss) > 2 {
+				ss1 := strings.Split(ss[2], "/")
+				clusterName = &ss1[len(ss1)-1]
+			}
+		} else if strings.HasPrefix(line, "balance_operation_count") {
+			ss := strings.Fields(line)
+			if len(ss) > 2 {
+				s := ss[2]
+				i := strings.LastIndexByte(s, '=')
+				if i != -1 {
+					n, err := strconv.Atoi(s[i+1:])
+					if err == nil {
+						opCount = &n
+					}
+				}
+			}
+		}
+		return primaryMeta != nil && clusterName != nil && opCount != nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if primaryMeta == nil || clusterName == nil || opCount == nil {
+		return nil, newCommandError("failed to get cluster info", out)
+	}
+	return &ClusterInfo{
+		Cluster:               *clusterName,
+		PrimaryMeta:           *primaryMeta,
+		BalanceOperationCount: *opCount,
+	}, nil
+}
+
+func (c *shellMetaClient) GetHealthyInfo() ([]HealthyInfo, error) {
 	cmd, err := c.buildCmd("ls -d")
 	if err != nil {
 		return nil, err
@@ -115,11 +168,11 @@ func (c *MetaClient) GetHealthyInfo() ([]HealthyInfo, error) {
 	return infos, nil
 }
 
-func (c *MetaClient) RemoteCommand(command string, args ...string) (string, error) {
+func (c *shellMetaClient) RemoteCommand(command string, args ...string) (string, error) {
 	return c.cmdClient.Call(command, args)
 }
 
-func (c *MetaClient) SetMetaLevel(level string) error {
+func (c *shellMetaClient) SetMetaLevel(level string) error {
 	fmt.Println("Set meta level to " + level + "...")
 	cmd, err := c.buildCmd("set_meta_level " + level)
 	if err != nil {
@@ -135,7 +188,7 @@ func (c *MetaClient) SetMetaLevel(level string) error {
 	return nil
 }
 
-func (c *MetaClient) Rebalance(primaryOnly bool) error {
+func (c *shellMetaClient) Rebalance(primaryOnly bool) error {
 	if primaryOnly {
 		if _, err := c.RemoteCommand("meta.lb.only_move_primary", "true"); err != nil {
 			return err
@@ -151,7 +204,7 @@ func (c *MetaClient) Rebalance(primaryOnly bool) error {
 
 	remainTimes := 1
 	for {
-		info, err := GetClusterInfo(c.MetaList)
+		info, err := c.GetClusterInfo()
 		if err != nil {
 			return err
 		}
@@ -181,14 +234,14 @@ func (c *MetaClient) Rebalance(primaryOnly bool) error {
 	return nil
 }
 
-func (c *MetaClient) Migrate(addr string) error {
+func (c *shellMetaClient) Migrate(addr string) error {
 	if err := runSh("migrate_node", "-c", c.MetaList, "-n", addr, "-t", "run").Run(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *MetaClient) Downgrade(addr string) ([]string, error) {
+func (c *shellMetaClient) Downgrade(addr string) ([]string, error) {
 	var gpids []string
 	if _, err := checkOutput(runSh("downgrade_node", "-c", c.MetaList, "-n", addr, "-t run"), false, func(line string) bool {
 		if strings.HasPrefix(line, "propose ") {
@@ -219,7 +272,7 @@ func (c *MetaClient) Downgrade(addr string) ([]string, error) {
 // 	return nil
 // }
 
-func (c *MetaClient) ListNodes() ([]Node, error) {
+func (c *shellMetaClient) ListNodes() ([]Node, error) {
 	cmd, err := c.buildCmd("nodes -d")
 	if err != nil {
 		return nil, err

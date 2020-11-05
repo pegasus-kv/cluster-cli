@@ -17,11 +17,6 @@
 
 package pegasus
 
-import (
-	"strconv"
-	"strings"
-)
-
 type ClusterInfo struct {
 	Cluster               string
 	PrimaryMeta           string
@@ -61,54 +56,4 @@ func findReplicaNode(name string) (Node, bool) {
 		}
 	}
 	return Node{}, false
-}
-
-func GetClusterInfo(metaList string) (*ClusterInfo, error) {
-	cmd, err := runShellInput("cluster_info", metaList)
-	if err != nil {
-		return nil, err
-	}
-	var (
-		primaryMeta *string
-		clusterName *string
-		opCount     *int
-	)
-	out, err := checkOutput(cmd, true, func(line string) bool {
-		if strings.HasPrefix(line, "primary_meta_server") {
-			ss := strings.Fields(line)
-			if len(ss) > 2 {
-				primaryMeta = &ss[2]
-			}
-		} else if strings.HasPrefix(line, "zookeeper_root") {
-			ss := strings.Fields(line)
-			if len(ss) > 2 {
-				ss1 := strings.Split(ss[2], "/")
-				clusterName = &ss1[len(ss1)-1]
-			}
-		} else if strings.HasPrefix(line, "balance_operation_count") {
-			ss := strings.Fields(line)
-			if len(ss) > 2 {
-				s := ss[2]
-				i := strings.LastIndexByte(s, '=')
-				if i != -1 {
-					n, err := strconv.Atoi(s[i+1:])
-					if err == nil {
-						opCount = &n
-					}
-				}
-			}
-		}
-		return primaryMeta != nil && clusterName != nil && opCount != nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if primaryMeta == nil || clusterName == nil || opCount == nil {
-		return nil, newCommandError("failed to get cluster info", out)
-	}
-	return &ClusterInfo{
-		Cluster:               *clusterName,
-		PrimaryMeta:           *primaryMeta,
-		BalanceOperationCount: *opCount,
-	}, nil
 }
