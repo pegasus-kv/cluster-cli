@@ -149,7 +149,7 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 
 	fmt.Println("Wait cluster to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		infos, err := metaClient.GetHealthInfo()
+		infos, err := metaClient.ListTableHealthInfos()
 		if err != nil {
 			return false, err
 		}

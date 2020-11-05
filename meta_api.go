@@ -30,13 +30,18 @@ import (
 // MetaClient is a suite of API that connects to the Pegasus MetaServer,
 // retrieves the cluster information or controls cluster state.
 type MetaClient interface {
-	GetHealthInfo() ([]*HealthInfo, error)
+	// Lists all tables' health information.
+	ListTableHealthInfos() ([]*HealthInfo, error)
+
 	RemoteCommand(string, ...string) (string, error)
 	SetMetaLevel(string) error
 	Rebalance(bool) error
 	Migrate(string) error
 	Downgrade(string) ([]string, error)
+
+	// Lists the replica nodes in the Pegasus cluster.
 	ListNodes() ([]Node, error)
+
 	GetClusterInfo() (*ClusterInfo, error)
 }
 
@@ -119,7 +124,7 @@ func (c *shellMetaClient) GetClusterInfo() (*ClusterInfo, error) {
 	}, nil
 }
 
-func (c *shellMetaClient) GetHealthInfo() ([]*HealthInfo, error) {
+func (c *shellMetaClient) ListTableHealthInfos() ([]*HealthInfo, error) {
 	cmd, err := c.buildCmd("ls -d")
 	if err != nil {
 		return nil, err
@@ -127,44 +132,49 @@ func (c *shellMetaClient) GetHealthInfo() ([]*HealthInfo, error) {
 	flag := false
 	var infos []*HealthInfo
 	_, err = checkOutputByLine(cmd, false, func(line string) bool {
-		if flag {
-			ss := strings.Fields(line)
-			if len(ss) < 7 {
-				flag = false
-			} else {
-				partitionCount, err := strconv.Atoi(ss[2])
-				if err != nil {
-					return false
-				}
-				fullyHealthy, err := strconv.Atoi(ss[3])
-				if err != nil {
-					return false
-				}
-				unhealthy, err := strconv.Atoi(ss[4])
-				if err != nil {
-					return false
-				}
-				writeUnhealthy, err := strconv.Atoi(ss[5])
-				if err != nil {
-					return false
-				}
-				readUnhealthy, err := strconv.Atoi(ss[6])
-				if err != nil {
-					return false
-				}
-				infos = append(infos, &HealthInfo{
-					PartitionCount: partitionCount,
-					FullyHealthy:   fullyHealthy,
-					Unhealthy:      unhealthy,
-					WriteUnhealthy: writeUnhealthy,
-					ReadUnhealthy:  readUnhealthy,
-				})
-				return true
-			}
-		} else if strings.Contains(line, "  fully_healthy  ") {
+		if !flag && strings.Contains(line, "  fully_healthy  ") {
 			flag = true
+			// reach the section of apps health info
+			return false
 		}
-		return false
+		if !flag { // unrelated line
+			return false
+		}
+		ss := strings.Fields(line)
+		if len(ss) < 7 {
+			flag = false // reach unrelated section
+			return false
+		}
+		// fields:
+		// app_id | app_name | partition_count | fully_healthy | unhealthy | write_unhealthy | read_unhealthy
+		partitionCount, err := strconv.Atoi(ss[2])
+		if err != nil {
+			return false
+		}
+		fullyHealthy, err := strconv.Atoi(ss[3])
+		if err != nil {
+			return false
+		}
+		unhealthy, err := strconv.Atoi(ss[4])
+		if err != nil {
+			return false
+		}
+		writeUnhealthy, err := strconv.Atoi(ss[5])
+		if err != nil {
+			return false
+		}
+		readUnhealthy, err := strconv.Atoi(ss[6])
+		if err != nil {
+			return false
+		}
+		infos = append(infos, &HealthInfo{
+			PartitionCount: partitionCount,
+			FullyHealthy:   fullyHealthy,
+			Unhealthy:      unhealthy,
+			WriteUnhealthy: writeUnhealthy,
+			ReadUnhealthy:  readUnhealthy,
+		})
+		return true
 	})
 	if err != nil {
 		return nil, err
@@ -239,10 +249,7 @@ func (c *shellMetaClient) Rebalance(primaryOnly bool) error {
 }
 
 func (c *shellMetaClient) Migrate(addr string) error {
-	if err := runSh("migrate_node", "-c", c.metaList, "-n", addr, "-t", "run").Run(); err != nil {
-		return err
-	}
-	return nil
+	return runSh("migrate_node", "-c", c.metaList, "-n", addr, "-t", "run").Run()
 }
 
 func (c *shellMetaClient) Downgrade(addr string) ([]string, error) {
@@ -269,30 +276,32 @@ func (c *shellMetaClient) ListNodes() ([]Node, error) {
 	re := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+:\d+`)
 	nodes := []Node{}
 	_, err = checkOutputByLine(cmd, false, func(line string) bool {
-		if re.MatchString(line) {
-			ss := strings.Fields(line)
-			if len(ss) == 5 {
-				replica, err := strconv.Atoi(ss[2])
-				if err != nil {
-					return false
-				}
-				primary, err := strconv.Atoi(ss[3])
-				if err != nil {
-					return false
-				}
-				secondary, err := strconv.Atoi(ss[4])
-				if err != nil {
-					return false
-				}
-				info := &NodeInfo{
-					Status:         ss[1],
-					ReplicaCount:   replica,
-					PrimaryCount:   primary,
-					SecondaryCount: secondary,
-				}
-				nodes = append(nodes, Node{JobReplica, "", ss[0], info})
-			}
+		if !re.MatchString(line) {
+			return false
 		}
+		ss := strings.Fields(line)
+		if len(ss) != 5 {
+			return false
+		}
+		replica, err := strconv.Atoi(ss[2])
+		if err != nil {
+			return false
+		}
+		primary, err := strconv.Atoi(ss[3])
+		if err != nil {
+			return false
+		}
+		secondary, err := strconv.Atoi(ss[4])
+		if err != nil {
+			return false
+		}
+		info := &NodeInfo{
+			Status:         ss[1],
+			ReplicaCount:   replica,
+			PrimaryCount:   primary,
+			SecondaryCount: secondary,
+		}
+		nodes = append(nodes, Node{JobReplica, "", ss[0], info})
 		return false
 	})
 	if err != nil {

@@ -53,7 +53,7 @@ func runSh(arg ...string) *exec.Cmd {
 }
 
 // checkOutputByLine runs the command and processes each line in the output
-// using `checker`. If checker returns false, it stops parsing the output.
+// using `checker`. If checker returns true, it stops parsing the output.
 func checkOutputByLine(cmd *exec.Cmd, stderr bool, checker func(line string) bool) ([]byte, error) {
 	var (
 		out []byte

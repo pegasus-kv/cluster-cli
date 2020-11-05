@@ -237,7 +237,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 
 	fmt.Println("Wait " + node.IPPort + " to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
-		infos, err := metaClient.GetHealthInfo()
+		infos, err := metaClient.ListTableHealthInfos()
 		if err != nil {
 			return false, err
 		}
