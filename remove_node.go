@@ -43,7 +43,7 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 			return errors.New("replica node '" + name + "' not found")
 		}
 		nodes[i] = node
-		addrs[i] = node.IPPort
+		addrs[i] = node.IPPort()
 	}
 	if _, err := client.RemoteCommand("meta.lb.assign_secondary_black_list", strings.Join(addrs, ",")); err != nil {
 		return err
@@ -63,7 +63,7 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 }
 
 func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
-	fmt.Println("Stopping replica node " + node.Name + " of " + node.IPPort + " ...")
+	fmt.Println("Stopping replica node " + node.Name() + " of " + node.IPPort() + " ...")
 	if err := metaClient.SetMetaLevel("steady"); err != nil {
 		return err
 	}
@@ -74,11 +74,11 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 
 	// migrate node
 	fmt.Println("Migrating primary replicas out of node...")
-	if err := metaClient.Migrate(node.IPPort); err != nil {
+	if err := metaClient.Migrate(node.IPPort()); err != nil {
 		return err
 	}
 	// wait for pri_count == 0
-	fmt.Println("Wait " + node.IPPort + " to migrate done...")
+	fmt.Println("Wait " + node.IPPort() + " to migrate done...")
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		nodes, err := metaClient.ListNodes()
@@ -86,8 +86,8 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 			return false, err
 		}
 		for _, n := range nodes {
-			if n.IPPort == node.IPPort {
-				val = n.Info.PrimaryCount
+			if n.IPPort() == node.IPPort() {
+				val = n.PrimaryCount
 				break
 			}
 		}
@@ -95,7 +95,7 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 			fmt.Println("Migrate done.")
 			return true, nil
 		}
-		fmt.Println("Still " + strconv.Itoa(val) + " primary replicas left on " + node.IPPort)
+		fmt.Println("Still " + strconv.Itoa(val) + " primary replicas left on " + node.IPPort())
 		return false, nil
 	}, time.Second, 0); err != nil {
 		return err
@@ -104,12 +104,12 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 
 	// downgrade node and kill partition
 	fmt.Println("Downgrading replicas on node...")
-	gpids, err := metaClient.Downgrade(node.IPPort)
+	gpids, err := metaClient.Downgrade(node.IPPort())
 	if err != nil {
 		return err
 	}
 	// wait for rep_count == 0
-	fmt.Println("Wait " + node.IPPort + " to downgrade done...")
+	fmt.Println("Wait " + node.IPPort() + " to downgrade done...")
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		nodes, err := metaClient.ListNodes()
@@ -117,8 +117,8 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 			return false, err
 		}
 		for _, n := range nodes {
-			if n.IPPort == node.IPPort {
-				val = n.Info.ReplicaCount
+			if n.IPPort() == node.IPPort() {
+				val = n.ReplicaCount
 				break
 			}
 		}
@@ -126,14 +126,14 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 			fmt.Println("Downgrade done.")
 			return true, nil
 		}
-		fmt.Println("Still " + strconv.Itoa(val) + " replicas left on " + node.IPPort)
+		fmt.Println("Still " + strconv.Itoa(val) + " replicas left on " + node.IPPort())
 		return false, nil
 	}, time.Second, 0); err != nil {
 		return err
 	}
 	time.Sleep(time.Second)
 
-	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort)
+	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort())
 	for _, gpid := range gpids {
 		if _, err := remoteCmdClient.KillPartition(gpid); err != nil {
 			return err

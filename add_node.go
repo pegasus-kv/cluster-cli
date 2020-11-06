@@ -42,7 +42,7 @@ func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames []st
 		if !ok {
 			return errors.New("replica node '" + name + "' not found")
 		}
-		fmt.Println("Starting node " + node.IPPort + " by deployment...")
+		fmt.Println("Starting node " + node.IPPort() + " by deployment...")
 		if err := deploy.StartNode(node); err != nil {
 			return err
 		}

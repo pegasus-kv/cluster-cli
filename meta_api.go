@@ -40,7 +40,7 @@ type MetaClient interface {
 	Downgrade(string) ([]string, error)
 
 	// Lists the replica nodes in the Pegasus cluster.
-	ListNodes() ([]Node, error)
+	ListNodes() ([]ReplicaNode, error)
 
 	GetClusterInfo() (*ClusterInfo, error)
 }
@@ -268,13 +268,13 @@ func (c *shellMetaClient) Downgrade(addr string) ([]string, error) {
 	return gpids, nil
 }
 
-func (c *shellMetaClient) ListNodes() ([]Node, error) {
+func (c *shellMetaClient) ListNodes() ([]ReplicaNode, error) {
 	cmd, err := c.buildCmd("nodes -d")
 	if err != nil {
 		return nil, err
 	}
 	re := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+:\d+`)
-	nodes := []Node{}
+	nodes := []ReplicaNode{}
 	_, err = checkOutputByLine(cmd, false, func(line string) bool {
 		if !re.MatchString(line) {
 			return false
@@ -295,13 +295,14 @@ func (c *shellMetaClient) ListNodes() ([]Node, error) {
 		if err != nil {
 			return false
 		}
-		info := &NodeInfo{
-			Status:         ss[1],
-			ReplicaCount:   replica,
-			PrimaryCount:   primary,
+		node := ReplicaNode{
+			addr: ss[0],
+			Status: ss[1],
+			ReplicaCount: replica,
+			PrimaryCount: primary,
 			SecondaryCount: secondary,
 		}
-		nodes = append(nodes, Node{JobReplica, "", ss[0], info})
+		nodes = append(nodes, node)
 		return false
 	})
 	if err != nil {

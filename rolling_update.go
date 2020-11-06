@@ -41,8 +41,8 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	fmt.Println()
 	if nodeNames == nil {
 		for _, node := range globalAllNodes {
-			if node.Job == JobReplica {
-				if err := rollingUpdateNode(deploy, client, node); err != nil {
+			if node.Job() == JobReplica {
+				if err := rollingUpdateNode(deploy, client, node.(ReplicaNode)); err != nil {
 					return err
 				}
 				fmt.Println()
@@ -67,7 +67,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	if nodeNames == nil {
 		fmt.Println("Rolling update meta servers...")
 		for _, node := range globalAllNodes {
-			if node.Job == JobMeta {
+			if node.Job() == JobMeta {
 				if err := deploy.RollingUpdate(node); err != nil {
 					return err
 				}
@@ -76,7 +76,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		fmt.Println("Rolling update meta servers done")
 		fmt.Println("Rolling update collectors...")
 		for _, node := range globalAllNodes {
-			if node.Job == JobCollector {
+			if node.Job() == JobCollector {
 				if err := deploy.RollingUpdate(node); err != nil {
 					return err
 				}
@@ -92,8 +92,8 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	return nil
 }
 
-func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) error {
-	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name, node.IPPort)
+func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node ReplicaNode) error {
+	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name(), node.IPPort())
 
 	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
 		return err
@@ -103,7 +103,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 	fmt.Println("Migrating primary replicas out of node...")
 	fin, err := waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			if err := metaClient.Migrate(node.IPPort); err != nil {
+			if err := metaClient.Migrate(node.IPPort()); err != nil {
 				return false, err
 			}
 			fmt.Println("Sent migrate propose")
@@ -114,12 +114,12 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 		}
 		priCount := -1
 		for _, n := range nodes {
-			if n.IPPort == node.IPPort {
-				priCount = n.Info.PrimaryCount
+			if n.IPPort() == node.IPPort() {
+				priCount = n.PrimaryCount
 				break
 			}
 		}
-		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort)
+		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort())
 		c++
 		return priCount == 0, nil
 	}, time.Second, 28)
@@ -138,7 +138,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 	var gpids []string
 	fin, err = waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			gpids, err = metaClient.Downgrade(node.IPPort)
+			gpids, err = metaClient.Downgrade(node.IPPort())
 			if err != nil {
 				return false, err
 			}
@@ -150,11 +150,11 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 		}
 		priCount := -1
 		for _, n := range nodes {
-			if n.IPPort == node.IPPort {
-				priCount = n.Info.PrimaryCount
+			if n.IPPort() == node.IPPort() {
+				priCount = n.PrimaryCount
 			}
 		}
-		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort)
+		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort())
 		c++
 		return priCount == 0, nil
 	}, time.Second, 28)
@@ -169,7 +169,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 	time.Sleep(time.Second)
 
 	// TODO: Check replicas closed on node here
-	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort)
+	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort())
 	c = 0
 	fmt.Println("Checking replicas closed on node...")
 	fin, err = waitFor(func() (bool, error) {
@@ -190,7 +190,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 		for _, counter := range counters {
 			count += int(counter.Value)
 		}
-		fmt.Printf("Still %d replicas not closed on %s\n", count, node.IPPort)
+		fmt.Printf("Still %d replicas not closed on %s\n", count, node.IPPort())
 		c++
 		return count == 0, nil
 	}, time.Second, 28)
@@ -217,7 +217,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 	}
 	fmt.Println("Rolling update by deployment done")
 
-	fmt.Println("Wait " + node.IPPort + " to become alive...")
+	fmt.Println("Wait " + node.IPPort() + " to become alive...")
 	if _, err := waitFor(func() (bool, error) {
 		nodes, err := metaClient.ListNodes()
 		if err != nil {
@@ -225,8 +225,8 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 		}
 		var status string
 		for _, n := range nodes {
-			if n.IPPort == node.IPPort {
-				status = n.Info.Status
+			if n.IPPort() == node.IPPort() {
+				status = n.Status
 				break
 			}
 		}
@@ -235,7 +235,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node Node) erro
 		return err
 	}
 
-	fmt.Println("Wait " + node.IPPort + " to become healthy...")
+	fmt.Println("Wait " + node.IPPort() + " to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
 		infos, err := metaClient.ListTableHealthInfos()
 		if err != nil {

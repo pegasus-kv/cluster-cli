@@ -32,12 +32,74 @@ type HealthInfo struct {
 	ReadUnhealthy  int
 }
 
-type NodeInfo struct {
+type ReplicaNode struct {
+	name string
+	addr string
+
 	// ALIVE / UNALIVE
 	Status         string
 	ReplicaCount   int
 	PrimaryCount   int
 	SecondaryCount int
+}
+
+func (ReplicaNode) Job() JobType {
+	return JobReplica
+}
+
+func (r ReplicaNode) Name() string {
+	return r.name
+}
+
+func (r ReplicaNode) IPPort() string {
+	return r.addr
+}
+
+type MetaNode struct {
+	name string
+	addr string
+}
+
+func (MetaNode) Job() JobType {
+	return JobMeta
+}
+
+func (m MetaNode) Name() string {
+	return m.name
+}
+
+func (m MetaNode) IPPort() string {
+	return m.addr
+}
+
+type CollectorNode struct {
+	name string
+	addr string
+}
+
+func (CollectorNode) Job() JobType {
+	return JobCollector
+}
+
+func (c CollectorNode) Name() string {
+	return c.name
+}
+
+func (c CollectorNode) IPPort() string {
+	return c.addr
+}
+
+func NewNode(name string, addr string, job JobType) Node {
+	switch job {
+	case JobReplica:
+		return ReplicaNode{name: name, addr: addr}
+	case JobMeta:
+		return MetaNode{name: name, addr: addr}
+	case JobCollector:
+		return CollectorNode{name: name, addr: addr}
+	default:
+		return nil
+	}
 }
 
 var globalAllNodes []Node
@@ -51,11 +113,11 @@ func listAndCacheAllNodes(deploy Deployment) error {
 	return nil
 }
 
-func findReplicaNode(name string) (Node, bool) {
+func findReplicaNode(name string) (ReplicaNode, bool) {
 	for _, node := range globalAllNodes {
-		if node.Job == JobReplica && name == node.Name {
-			return node, true
+		if node.Job() == JobReplica && name == node.Name() {
+			return node.(ReplicaNode), true
 		}
 	}
-	return Node{}, false
+	return ReplicaNode{}, false
 }

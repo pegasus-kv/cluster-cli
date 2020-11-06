@@ -77,7 +77,7 @@ func newMinosDeployment(cluster string, confPath string, clientDir string) (*min
 
 func (m *minosDeployment) StartNode(node pegasus.Node) error {
 	// ./deploy bootstrap pegasus --job <job> --task <task-id>
-	cmd := m.execDeploy("bootstrap", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name)
+	cmd := m.execDeploy("bootstrap", "pegasus", m.Cluster, "--job", node.Job().String(), "--task", node.Name())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
@@ -89,7 +89,7 @@ func (m *minosDeployment) StartNode(node pegasus.Node) error {
 
 func (m *minosDeployment) StopNode(node pegasus.Node) error {
 	// ./deploy stop pegasus --job <job> --task <task-id> --skip_confirm
-	cmd := m.execDeploy("stop", "pegasus", m.Cluster, "--job", node.Job.String(), "--task", node.Name, "--skip_confirm")
+	cmd := m.execDeploy("stop", "pegasus", m.Cluster, "--job", node.Job().String(), "--task", node.Name(), "--skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return newCommandError("failed to execute minos stop", out)
 	}
@@ -97,8 +97,8 @@ func (m *minosDeployment) StopNode(node pegasus.Node) error {
 }
 
 func (m *minosDeployment) RollingUpdate(node pegasus.Node) error {
-	cmd := m.execDeploy("rolling_update", "pegasus", m.Cluster, "--job", node.Job.String(),
-		"--task", node.Name, "--update_package --update_config --time_interval 20 --skip_confirm")
+	cmd := m.execDeploy("rolling_update", "pegasus", m.Cluster, "--job", node.Job().String(),
+		"--task", node.Name(), "--update_package --update_config --time_interval 20 --skip_confirm")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return newCommandError("failed to execute minos rolling_update", out)
 	}
@@ -138,12 +138,8 @@ func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
 		} else {
 			job = pegasus.JobReplica
 		}
-		nodes = append(nodes, pegasus.Node{
-			Job:    job,
-			Name:   strconv.Itoa(v.Task), // use task id as the name
-			IPPort: k,
-			Info:   nil,
-		})
+		// use task id as the name
+		nodes = append(nodes, pegasus.NewNode(strconv.Itoa(v.Task), k, job))
 	}
 	return nodes, nil
 }

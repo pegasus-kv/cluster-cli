@@ -46,16 +46,15 @@ var CreateDeployment func(cluster string) Deployment = nil
 
 // Node could be a MetaServer/ReplicaServer/Collector. Provided with a Node, the implementation of
 // Deployment must be able to remotely operates the node.
-type Node struct {
-	Job JobType
+type Node interface {
+	Job() JobType
 
 	// Node's name should be unique within the cluster.
 	// There's no exact rule on the naming of a node.
 	// It could be some ID like "1", "2" ..., or a hostname, UUID, TCP address, etc.
-	Name string
+	Name() string
 
-	IPPort string
-	Info   *NodeInfo
+	IPPort() string
 }
 
 type JobType int
