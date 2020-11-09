@@ -40,7 +40,7 @@ type MetaClient interface {
 	Downgrade(string) ([]string, error)
 
 	// Lists the replica nodes in the Pegasus cluster.
-	ListNodes() ([]ReplicaNode, error)
+	ListNodes() ([]*ReplicaNode, error)
 
 	GetClusterInfo() (*ClusterInfo, error)
 }
@@ -52,7 +52,8 @@ type shellMetaClient struct {
 	cmdClient   *client.RemoteCmdClient
 }
 
-// NewMetaClient creates an instance of MetaClient.
+// NewMetaClient creates an instance of MetaClient. It fails if the
+// target cluster doesn't exactly match the name `cluster`.
 func NewMetaClient(cluster string, metaList string) (MetaClient, error) {
 	c := &shellMetaClient{
 		metaList: metaList,
@@ -268,13 +269,13 @@ func (c *shellMetaClient) Downgrade(addr string) ([]string, error) {
 	return gpids, nil
 }
 
-func (c *shellMetaClient) ListNodes() ([]ReplicaNode, error) {
+func (c *shellMetaClient) ListNodes() ([]*ReplicaNode, error) {
 	cmd, err := c.buildCmd("nodes -d")
 	if err != nil {
 		return nil, err
 	}
 	re := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+:\d+`)
-	nodes := []ReplicaNode{}
+	nodes := []*ReplicaNode{}
 	_, err = checkOutputByLine(cmd, false, func(line string) bool {
 		if !re.MatchString(line) {
 			return false
@@ -295,11 +296,11 @@ func (c *shellMetaClient) ListNodes() ([]ReplicaNode, error) {
 		if err != nil {
 			return false
 		}
-		node := ReplicaNode{
-			addr: ss[0],
-			Status: ss[1],
-			ReplicaCount: replica,
-			PrimaryCount: primary,
+		node := &ReplicaNode{
+			addr:           ss[0],
+			Status:         ss[1],
+			ReplicaCount:   replica,
+			PrimaryCount:   primary,
 			SecondaryCount: secondary,
 		}
 		nodes = append(nodes, node)

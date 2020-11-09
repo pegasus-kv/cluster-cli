@@ -25,6 +25,9 @@ import (
 	"time"
 )
 
+// RollingUpdateNodes implements the rolling-update command.
+// If `nodeNames` are given nil, it means rolling-update on all nodes, including Meta/Collector.
+// If not nil, it executes rolling-update on only the Replica nodes specified.
 func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
 	if err := listAndCacheAllNodes(deploy); err != nil {
 		return err
@@ -34,15 +37,16 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		return err
 	}
 
+	// preparation: stop automatic rebalance
 	if err := client.SetMetaLevel("steady"); err != nil {
 		return err
 	}
 
 	fmt.Println()
 	if nodeNames == nil {
-		for _, node := range globalAllNodes {
-			if node.Job() == JobReplica {
-				if err := rollingUpdateNode(deploy, client, node.(ReplicaNode)); err != nil {
+		for _, n := range globalAllNodes {
+			if rn, ok := n.(*ReplicaNode); ok {
+				if err := rollingUpdateNode(deploy, client, rn); err != nil {
 					return err
 				}
 				fmt.Println()
@@ -92,7 +96,8 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	return nil
 }
 
-func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node ReplicaNode) error {
+// rolling-update a single node.
+func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNode) error {
 	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name(), node.IPPort())
 
 	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {

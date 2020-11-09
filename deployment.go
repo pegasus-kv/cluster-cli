@@ -50,7 +50,7 @@ type Node interface {
 	Job() JobType
 
 	// Node's name should be unique within the cluster.
-	// There's no exact rule on the naming of a node.
+	// There's no strict rule on the naming of a node.
 	// It could be some ID like "1", "2" ..., or a hostname, UUID, TCP address, etc.
 	Name() string
 

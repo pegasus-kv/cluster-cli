@@ -17,6 +17,8 @@
 
 package pegasus
 
+import "fmt"
+
 type ClusterInfo struct {
 	Cluster               string
 	PrimaryMeta           string
@@ -43,62 +45,63 @@ type ReplicaNode struct {
 	SecondaryCount int
 }
 
-func (ReplicaNode) Job() JobType {
+func (*ReplicaNode) Job() JobType {
 	return JobReplica
 }
 
-func (r ReplicaNode) Name() string {
+func (r *ReplicaNode) Name() string {
 	return r.name
 }
 
-func (r ReplicaNode) IPPort() string {
+func (r *ReplicaNode) IPPort() string {
 	return r.addr
 }
 
-type MetaNode struct {
+type metaNode struct {
 	name string
 	addr string
 }
 
-func (MetaNode) Job() JobType {
+func (*metaNode) Job() JobType {
 	return JobMeta
 }
 
-func (m MetaNode) Name() string {
+func (m *metaNode) Name() string {
 	return m.name
 }
 
-func (m MetaNode) IPPort() string {
+func (m *metaNode) IPPort() string {
 	return m.addr
 }
 
-type CollectorNode struct {
+type collectorNode struct {
 	name string
 	addr string
 }
 
-func (CollectorNode) Job() JobType {
+func (*collectorNode) Job() JobType {
 	return JobCollector
 }
 
-func (c CollectorNode) Name() string {
+func (c *collectorNode) Name() string {
 	return c.name
 }
 
-func (c CollectorNode) IPPort() string {
+func (c *collectorNode) IPPort() string {
 	return c.addr
 }
 
-func NewNode(name string, addr string, job JobType) Node {
+// NewNode returns a Node.
+func NewNode(name string, ipPort string, job JobType) Node {
 	switch job {
 	case JobReplica:
-		return ReplicaNode{name: name, addr: addr}
+		return &ReplicaNode{name: name, addr: ipPort}
 	case JobMeta:
-		return MetaNode{name: name, addr: addr}
+		return &metaNode{name: name, addr: ipPort}
 	case JobCollector:
-		return CollectorNode{name: name, addr: addr}
+		return &collectorNode{name: name, addr: ipPort}
 	default:
-		return nil
+		panic(fmt.Sprintf("unknown job: %d", int(job)))
 	}
 }
 
@@ -113,11 +116,11 @@ func listAndCacheAllNodes(deploy Deployment) error {
 	return nil
 }
 
-func findReplicaNode(name string) (ReplicaNode, bool) {
+func findReplicaNode(name string) (*ReplicaNode, bool) {
 	for _, node := range globalAllNodes {
 		if node.Job() == JobReplica && name == node.Name() {
-			return node.(ReplicaNode), true
+			return node.(*ReplicaNode), true
 		}
 	}
-	return ReplicaNode{}, false
+	return nil, false
 }
