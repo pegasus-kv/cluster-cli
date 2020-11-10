@@ -95,52 +95,21 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 
 // rolling-update a single node.
 func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNode) error {
-	log.Printf("Rolling update replica server %s of %s...", node.Name(), node.IPPort())
+	log.Printf("rolling update replica node \"%s\" [%s]", node.Name(), node.IPPort())
 
+	// TODO(wutao): add a log
 	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
 		return err
 	}
 
-	c := 0
-	log.Print("Migrating primary replicas out of node...")
-	fin, err := waitFor(func() (bool, error) {
-		if c%10 == 0 {
-			if err := metaClient.Migrate(node.IPPort()); err != nil {
-				return false, err
-			}
-			log.Print("Sent migrate propose")
-		}
-		nodes, err := metaClient.ListNodes()
-		if err != nil {
-			return false, err
-		}
-		priCount := -1
-		for _, n := range nodes {
-			if n.IPPort() == node.IPPort() {
-				priCount = n.PrimaryCount
-				break
-			}
-		}
-		log.Printf("Still %d primary replicas left on %s", priCount, node.IPPort())
-		c++
-		return priCount == 0, nil
-	}, time.Second, 28)
-	if err != nil {
-		return err
-	}
-	if fin {
-		log.Print("Migrate done")
-	} else {
-		log.Print("Migrate timeout")
-	}
-	time.Sleep(time.Second)
+	migratePrimariesOutOfNode(metaClient, node)
 
 	log.Print("Downgrading replicas on node...")
-	c = 0
+	c := 0
 	var gpids []string
-	fin, err = waitFor(func() (bool, error) {
+	fin, err := waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			gpids, err = metaClient.Downgrade(node.IPPort())
+			gpids, err := metaClient.Downgrade(node.IPPort())
 			if err != nil {
 				return false, err
 			}
@@ -258,6 +227,45 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 	}, time.Duration(10)*time.Second, 0); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func migratePrimariesOutOfNode(metaClient MetaClient, node *ReplicaNode) error {
+	c := 0
+	log.Print("migrating primary replicas out of node...")
+	fin, err := waitFor(func() (bool, error) {
+		if c%10 == 0 {
+			if err := metaClient.Migrate(node.IPPort()); err != nil {
+				return false, err
+			}
+			log.Print("proposed primaries migration to MetaServer")
+		}
+		nodes, err := metaClient.ListNodes()
+		if err != nil {
+			return false, err
+		}
+		priCount := -1
+		for _, n := range nodes {
+			if n.IPPort() == node.IPPort() {
+				priCount = n.PrimaryCount
+				break
+			}
+		}
+		log.Printf("Still %d primary replicas left on %s", priCount, node.IPPort())
+		c++
+		return priCount == 0, nil
+	}, time.Second, 28)
+
+	if err != nil {
+		return err
+	}
+	if fin {
+		log.Print("migrate done")
+	} else {
+		log.Print("migrate timeout")
+	}
+	time.Sleep(time.Second)
 
 	return nil
 }

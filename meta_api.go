@@ -38,7 +38,12 @@ type MetaClient interface {
 	RemoteCommand(string, ...string) (string, error)
 	SetMetaLevel(string) error
 	Rebalance(bool) error
+
+	// Migrate primary replicas out of the specified node.
+	// TODO(wutao): The command was implemented by a script `./run.sh migrate_node`.
+	//				Reimplement this command purely based on MetaServer RPC.
 	Migrate(string) error
+
 	Downgrade(string) ([]string, error)
 
 	// Lists the replica nodes in the Pegasus cluster.

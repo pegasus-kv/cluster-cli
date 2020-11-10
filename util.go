@@ -22,6 +22,7 @@ import (
 	"time"
 )
 
+// TODO(wutao): refactor to `waitFor(checker func() (bool, error), timeout time.Duration)`
 func waitFor(checker func() (bool, error), interval time.Duration, timeout int) (bool, error) {
 	i := 0
 	for {
