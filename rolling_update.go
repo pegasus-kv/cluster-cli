@@ -107,9 +107,10 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 	log.Print("Downgrading replicas on node...")
 	c := 0
 	var gpids []string
+	var err error
 	fin, err := waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			gpids, err := metaClient.Downgrade(node.IPPort())
+			gpids, err = metaClient.Downgrade(node.IPPort())
 			if err != nil {
 				return false, err
 			}
