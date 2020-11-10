@@ -19,7 +19,8 @@ package pegasus
 
 import (
 	"errors"
-	"fmt"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // AddNodes implements the add-node command.
@@ -36,18 +37,16 @@ func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames []st
 		return err
 	}
 
-	fmt.Println()
 	for _, name := range nodeNames {
 		node, ok := findReplicaNode(name)
 		if !ok {
 			return errors.New("replica node '" + name + "' not found")
 		}
-		fmt.Println("Starting node " + node.IPPort() + " by deployment...")
+		log.Printf("Starting node %s by deployment...", node.IPPort())
 		if err := deploy.StartNode(node); err != nil {
 			return err
 		}
-		fmt.Println("Starting node by deployment done")
-		fmt.Println()
+		log.Print("Starting node by deployment done")
 	}
 	if err := client.Rebalance(false); err != nil {
 		return err

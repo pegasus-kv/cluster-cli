@@ -19,10 +19,10 @@ package pegasus
 
 import (
 	"errors"
-	"fmt"
 	"pegasus-cluster-cli/client"
-	"strconv"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // RollingUpdateNodes implements the rolling-update command.
@@ -42,14 +42,12 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		return err
 	}
 
-	fmt.Println()
 	if nodeNames == nil {
 		for _, n := range globalAllNodes {
 			if rn, ok := n.(*ReplicaNode); ok {
 				if err := rollingUpdateNode(deploy, client, rn); err != nil {
 					return err
 				}
-				fmt.Println()
 			}
 		}
 	} else {
@@ -61,7 +59,6 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 			if err := rollingUpdateNode(deploy, client, node); err != nil {
 				return err
 			}
-			fmt.Println()
 		}
 	}
 
@@ -69,7 +66,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		return err
 	}
 	if nodeNames == nil {
-		fmt.Println("Rolling update meta servers...")
+		log.Print("Rolling update meta servers...")
 		for _, node := range globalAllNodes {
 			if node.Job() == JobMeta {
 				if err := deploy.RollingUpdate(node); err != nil {
@@ -77,8 +74,8 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 				}
 			}
 		}
-		fmt.Println("Rolling update meta servers done")
-		fmt.Println("Rolling update collectors...")
+		log.Print("Rolling update meta servers done")
+		log.Print("Rolling update collectors...")
 		for _, node := range globalAllNodes {
 			if node.Job() == JobCollector {
 				if err := deploy.RollingUpdate(node); err != nil {
@@ -86,7 +83,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 				}
 			}
 		}
-		fmt.Println("Rolling update collectors done")
+		log.Print("Rolling update collectors done")
 
 		if err := client.Rebalance(false); err != nil {
 			return err
@@ -98,20 +95,20 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 
 // rolling-update a single node.
 func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNode) error {
-	fmt.Printf("Rolling update replica server %s of %s...\n", node.Name(), node.IPPort())
+	log.Printf("Rolling update replica server %s of %s...", node.Name(), node.IPPort())
 
 	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
 		return err
 	}
 
 	c := 0
-	fmt.Println("Migrating primary replicas out of node...")
+	log.Print("Migrating primary replicas out of node...")
 	fin, err := waitFor(func() (bool, error) {
 		if c%10 == 0 {
 			if err := metaClient.Migrate(node.IPPort()); err != nil {
 				return false, err
 			}
-			fmt.Println("Sent migrate propose")
+			log.Print("Sent migrate propose")
 		}
 		nodes, err := metaClient.ListNodes()
 		if err != nil {
@@ -124,7 +121,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 				break
 			}
 		}
-		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort())
+		log.Printf("Still %d primary replicas left on %s", priCount, node.IPPort())
 		c++
 		return priCount == 0, nil
 	}, time.Second, 28)
@@ -132,13 +129,13 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 		return err
 	}
 	if fin {
-		fmt.Println("Migrate done")
+		log.Print("Migrate done")
 	} else {
-		fmt.Println("Migrate timeout")
+		log.Print("Migrate timeout")
 	}
 	time.Sleep(time.Second)
 
-	fmt.Println("Downgrading replicas on node...")
+	log.Print("Downgrading replicas on node...")
 	c = 0
 	var gpids []string
 	fin, err = waitFor(func() (bool, error) {
@@ -147,7 +144,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 			if err != nil {
 				return false, err
 			}
-			fmt.Println("Sent downgrade propose")
+			log.Print("Sent downgrade propose")
 		}
 		nodes, err := metaClient.ListNodes()
 		if err != nil {
@@ -159,7 +156,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 				priCount = n.PrimaryCount
 			}
 		}
-		fmt.Println("Still " + strconv.Itoa(priCount) + " primary replicas left on " + node.IPPort())
+		log.Printf("Still %d primary replicas left on %s", priCount, node.IPPort())
 		c++
 		return priCount == 0, nil
 	}, time.Second, 28)
@@ -167,25 +164,25 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 		return err
 	}
 	if fin {
-		fmt.Println("Downgrade done")
+		log.Print("Downgrade done")
 	} else {
-		fmt.Println("Downgrade timeout")
+		log.Print("Downgrade timeout")
 	}
 	time.Sleep(time.Second)
 
 	// TODO: Check replicas closed on node here
 	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort())
 	c = 0
-	fmt.Println("Checking replicas closed on node...")
+	log.Print("Checking replicas closed on node...")
 	fin, err = waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			fmt.Println("Send kill_partition commands to node...")
+			log.Print("Send kill_partition commands to node...")
 			for _, gpid := range gpids {
 				if _, err := remoteCmdClient.KillPartition(gpid); err != nil {
 					return false, err
 				}
 			}
-			fmt.Printf("Sent to %d partitions.\n", len(gpids))
+			log.Printf("Sent to %d partitions.", len(gpids))
 		}
 		counters, err := remoteCmdClient.GetPerfCounters(".*replica(Count)")
 		if err != nil {
@@ -195,7 +192,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 		for _, counter := range counters {
 			count += int(counter.Value)
 		}
-		fmt.Printf("Still %d replicas not closed on %s\n", count, node.IPPort())
+		log.Printf("Still %d replicas not closed on %s", count, node.IPPort())
 		c++
 		return count == 0, nil
 	}, time.Second, 28)
@@ -203,9 +200,9 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 		return err
 	}
 	if fin {
-		fmt.Println("Close done.")
+		log.Print("Close done.")
 	} else {
-		fmt.Println("Close timeout.")
+		log.Print("Close timeout.")
 	}
 
 	if _, err := remoteCmdClient.Call("flush_log", nil); err != nil {
@@ -216,13 +213,13 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 		return err
 	}
 
-	fmt.Println("Rolling update by deployment...")
+	log.Print("Rolling update by deployment...")
 	if err := deploy.RollingUpdate(node); err != nil {
 		return err
 	}
-	fmt.Println("Rolling update by deployment done")
+	log.Print("Rolling update by deployment done")
 
-	fmt.Println("Wait " + node.IPPort() + " to become alive...")
+	log.Printf("Wait %s to become alive...", node.IPPort())
 	if _, err := waitFor(func() (bool, error) {
 		nodes, err := metaClient.ListNodes()
 		if err != nil {
@@ -240,7 +237,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 		return err
 	}
 
-	fmt.Println("Wait " + node.IPPort() + " to become healthy...")
+	log.Printf("Wait %s to become healthy...", node.IPPort())
 	if _, err := waitFor(func() (bool, error) {
 		infos, err := metaClient.ListTableHealthInfos()
 		if err != nil {
@@ -253,10 +250,10 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 			}
 		}
 		if count != 0 {
-			fmt.Printf("Cluster not healthy, unhealthy app count %d\n", count)
+			log.Printf("Cluster not healthy, unhealthy app count %d", count)
 			return false, nil
 		}
-		fmt.Println("Cluster becomes healthy")
+		log.Print("Cluster becomes healthy")
 		return true, nil
 	}, time.Duration(10)*time.Second, 0); err != nil {
 		return err

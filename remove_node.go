@@ -19,11 +19,11 @@ package pegasus
 
 import (
 	"errors"
-	"fmt"
 	"pegasus-cluster-cli/client"
-	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
@@ -52,18 +52,16 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 		return err
 	}
 
-	fmt.Println()
 	for _, node := range nodes {
 		if err := removeNode(deploy, client, node); err != nil {
 			return err
 		}
-		fmt.Println()
 	}
 	return nil
 }
 
 func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
-	fmt.Println("Stopping replica node " + node.Name() + " of " + node.IPPort() + " ...")
+	log.Printf("Stopping replica node %s of %s ...", node.Name(), node.IPPort())
 	if err := metaClient.SetMetaLevel("steady"); err != nil {
 		return err
 	}
@@ -73,12 +71,12 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 	}
 
 	// migrate node
-	fmt.Println("Migrating primary replicas out of node...")
+	log.Print("Migrating primary replicas out of node...")
 	if err := metaClient.Migrate(node.IPPort()); err != nil {
 		return err
 	}
 	// wait for pri_count == 0
-	fmt.Println("Wait " + node.IPPort() + " to migrate done...")
+	log.Printf("Wait %s to migrate done...", node.IPPort())
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		nodes, err := metaClient.ListNodes()
@@ -92,10 +90,10 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 			}
 		}
 		if val == 0 {
-			fmt.Println("Migrate done.")
+			log.Print("Migrate done.")
 			return true, nil
 		}
-		fmt.Println("Still " + strconv.Itoa(val) + " primary replicas left on " + node.IPPort())
+		log.Printf("Still %d primary replicas left on %s", val, node.IPPort())
 		return false, nil
 	}, time.Second, 0); err != nil {
 		return err
@@ -103,13 +101,13 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 	time.Sleep(time.Second)
 
 	// downgrade node and kill partition
-	fmt.Println("Downgrading replicas on node...")
+	log.Print("Downgrading replicas on node...")
 	gpids, err := metaClient.Downgrade(node.IPPort())
 	if err != nil {
 		return err
 	}
 	// wait for rep_count == 0
-	fmt.Println("Wait " + node.IPPort() + " to downgrade done...")
+	log.Printf("Wait %s to downgrade done...", node.IPPort())
 	if _, err := waitFor(func() (bool, error) {
 		val := 0
 		nodes, err := metaClient.ListNodes()
@@ -123,10 +121,10 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 			}
 		}
 		if val == 0 {
-			fmt.Println("Downgrade done.")
+			log.Print("Downgrade done.")
 			return true, nil
 		}
-		fmt.Println("Still " + strconv.Itoa(val) + " replicas left on " + node.IPPort())
+		log.Printf("Still %d replicas left on %s", val, node.IPPort())
 		return false, nil
 	}, time.Second, 0); err != nil {
 		return err
@@ -140,14 +138,14 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 		}
 	}
 
-	fmt.Println("Stop node by deployment...")
+	log.Print("Stop node by deployment...")
 	if err := deploy.StopNode(node); err != nil {
 		return err
 	}
-	fmt.Println("Stop node by deployment done")
+	log.Print("Stop node by deployment done")
 	time.Sleep(time.Second)
 
-	fmt.Println("Wait cluster to become healthy...")
+	log.Print("Wait cluster to become healthy...")
 	if _, err := waitFor(func() (bool, error) {
 		infos, err := metaClient.ListTableHealthInfos()
 		if err != nil {
@@ -160,10 +158,10 @@ func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
 			}
 		}
 		if count != 0 {
-			fmt.Printf("Cluster not healthy, unhealthy_partition_count = %d\n", count)
+			log.Printf("Cluster not healthy, unhealthy_partition_count = %d", count)
 			return false, nil
 		}
-		fmt.Println("Cluster becomes healthy")
+		log.Print("Cluster becomes healthy")
 		return true, nil
 	}, time.Duration(10)*time.Second, 0); err != nil {
 		return err

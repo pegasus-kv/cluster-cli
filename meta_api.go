@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // MetaClient is a suite of API that connects to the Pegasus MetaServer,
@@ -188,7 +190,7 @@ func (c *shellMetaClient) RemoteCommand(command string, args ...string) (string,
 }
 
 func (c *shellMetaClient) SetMetaLevel(level string) error {
-	fmt.Println("Set meta level to " + level + "...")
+	log.Printf("Set meta level to %s...", level)
 	cmd, err := c.buildCmd("set_meta_level " + level)
 	if err != nil {
 		return err
@@ -214,7 +216,7 @@ func (c *shellMetaClient) Rebalance(primaryOnly bool) error {
 		return err
 	}
 
-	fmt.Println("Wait for 3 minutes to do load balance...")
+	log.Print("Wait for 3 minutes to do load balance...")
 	time.Sleep(time.Duration(180) * time.Second)
 
 	remainTimes := 1
@@ -227,12 +229,12 @@ func (c *shellMetaClient) Rebalance(primaryOnly bool) error {
 			if remainTimes == 0 {
 				break
 			} else {
-				fmt.Println("cluster may be balanced, try wait 30 seconds...")
+				log.Print("cluster may be balanced, try wait 30 seconds...")
 				remainTimes--
 				time.Sleep(time.Duration(30) * time.Second)
 			}
 		} else {
-			fmt.Printf("still %d balance operations to do...\n", info.BalanceOperationCount)
+			log.Printf("still %d balance operations to do...", info.BalanceOperationCount)
 			time.Sleep(time.Duration(10) * time.Second)
 		}
 	}
