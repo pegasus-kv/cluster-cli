@@ -1,8 +1,8 @@
 package pegasus
 
 import (
-	"time"
 	"pegasus-cluster-cli/client"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
