@@ -19,8 +19,9 @@ package pegasus
 
 import (
 	"errors"
-	log "github.com/sirupsen/logrus"
 	"pegasus-cluster-cli/client"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // RollingUpdateNodes implements the rolling-update command.
