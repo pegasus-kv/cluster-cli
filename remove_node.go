@@ -57,6 +57,10 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 			return err
 		}
 	}
+
+	if _, err := client.RemoteCommand("meta.lb.assign_secondary_black_list clear"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -70,55 +74,18 @@ func removeNode(deploy Deployment, metaClient MetaClient, node *ReplicaNode) err
 		return err
 	}
 
-	// migrate node
-	log.Print("Migrating primary replicas out of node...")
-	if err := metaClient.Migrate(node.IPPort()); err != nil {
+	if err := migratePrimariesOutOfNode(metaClient, node); err != nil {
 		return err
 	}
-	// wait for pri_count == 0
-	log.Printf("Wait %s to migrate done...", node.IPPort())
-	if _, err := waitFor(func() (bool, error) {
-		if err := node.updateInfo(metaClient); err != nil {
-			return false, err
-		}
-		if node.PrimaryCount == 0 {
-			log.Print("Migrate done.")
-			return true, nil
-		}
-		log.Printf("Still %d primary replicas left on %s", node.PrimaryCount, node.IPPort())
-		return false, nil
-	}, time.Second, 0); err != nil {
-		return err
-	}
-	time.Sleep(time.Second)
 
-	// downgrade node and kill partition
-	log.Print("Downgrading replicas on node...")
-	gpids, err := metaClient.Downgrade(node.IPPort())
+	gpids, err := downgradeReplicasOnNode(metaClient, node)
 	if err != nil {
 		return err
 	}
-	// wait for rep_count == 0
-	log.Printf("Wait %s to downgrade done...", node.IPPort())
-	if _, err := waitFor(func() (bool, error) {
-		if err := node.updateInfo(metaClient); err != nil {
-			return false, err
-		}
-		if node.ReplicaCount == 0 {
-			return true, nil
-		}
-		log.Printf("Still %d replicas left on %s", node.ReplicaCount, node.IPPort())
-		return false, nil
-	}, time.Second, 0); err != nil {
-		return err
-	}
-	time.Sleep(time.Second)
 
 	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort())
-	for _, gpid := range gpids {
-		if _, err := remoteCmdClient.KillPartition(gpid); err != nil {
-			return err
-		}
+	if err := CloseReplicasOnNode(remoteCmdClient, node, gpids); err != nil {
+		return err
 	}
 
 	log.Print("Stop node by deployment...")
@@ -128,25 +95,7 @@ func removeNode(deploy Deployment, metaClient MetaClient, node *ReplicaNode) err
 	log.Print("Stop node by deployment done")
 	time.Sleep(time.Second)
 
-	log.Print("Wait cluster to become healthy...")
-	if _, err := waitFor(func() (bool, error) {
-		infos, err := metaClient.ListTableHealthInfos()
-		if err != nil {
-			return false, err
-		}
-		count := 0
-		for _, info := range infos {
-			if info.PartitionCount != info.FullyHealthy {
-				count += info.Unhealthy
-			}
-		}
-		if count != 0 {
-			log.Printf("Cluster not healthy, unhealthy_partition_count = %d", count)
-			return false, nil
-		}
-		log.Print("Cluster becomes healthy")
-		return true, nil
-	}, time.Duration(10)*time.Second, 0); err != nil {
+	if _, err := waitNodeHealthy(node, metaClient); err != nil {
 		return err
 	}
 
