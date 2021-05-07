@@ -1,6 +1,0 @@
-test:
-  image: golangci/golangci-lint
-  script:
-    - go env -w GO111MODULE=on
-    - go env -w GOPROXY=https://goproxy.cn,direct
-    - golangci-lint run -v

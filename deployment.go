@@ -17,9 +17,9 @@
 
 package pegasus
 
-// Deployment is the abstraction of a deployment automation system that's capable of
-// mananging all the nodes in a Pegasus cluster.
-// pegasus-cluster-cli operates the cluster based on Deployment, using graceful strategies
+// Deployment is the abstraction of a deployment automation system that provides
+// the ability to operate all the nodes in a Pegasus cluster.
+// pegasus-cluster-cli operates the cluster based on `Deployment`, using graceful strategies
 // with higher availability, less performance downgrade than directly killing/starting
 // pegasus server.
 type Deployment interface {
@@ -34,10 +34,10 @@ type Deployment interface {
 	StopNode(Node) error
 
 	// Rolling-update a Pegasus node on the specified machine. A possible implementation
-	// may login to the machine, redownload the binary package and config, restart the process.
+	// may login to the machine, redownload the binary package and config and restart the process.
 	RollingUpdate(Node) error
 
-	// Retrieves the nodes information in the Pegasus cluster.
+	// Retrieves all nodes information in the Pegasus cluster.
 	ListAllNodes() ([]Node, error)
 }
 

@@ -19,9 +19,9 @@ package pegasus
 
 import (
 	"errors"
-	"pegasus-cluster-cli/client"
 	"time"
 
+	"github.com/pegasus-kv/cluster-cli/client"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -32,20 +32,20 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 	if err := listAndCacheAllNodes(deploy); err != nil {
 		return err
 	}
-	client, err := NewMetaClient(cluster, metaList)
+	meta, err := NewMetaClient(cluster, metaList)
 	if err != nil {
 		return err
 	}
 
 	// preparation: stop automatic rebalance
-	if err := client.SetMetaLevel("steady"); err != nil {
+	if err := meta.SetMetaLevelSteady(); err != nil {
 		return err
 	}
 
 	if nodeNames == nil {
 		for _, n := range globalAllNodes {
 			if rn, ok := n.(*ReplicaNode); ok {
-				if err := rollingUpdateNode(deploy, client, rn); err != nil {
+				if err := rollingUpdateNode(deploy, meta, rn); err != nil {
 					return err
 				}
 			}
@@ -56,15 +56,16 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 			if !ok {
 				return errors.New("replica node '" + name + "' not found")
 			}
-			if err := rollingUpdateNode(deploy, client, node); err != nil {
+			if err := rollingUpdateNode(deploy, meta, node); err != nil {
 				return err
 			}
 		}
 	}
 
-	if _, err := client.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "DEFAULT"); err != nil {
+	if err := meta.ResetAddSecondaryMaxCountForOneNode(); err != nil {
 		return err
 	}
+
 	if nodeNames == nil {
 		log.Print("Rolling update meta servers...")
 		for _, node := range globalAllNodes {
@@ -75,6 +76,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 			}
 		}
 		log.Print("Rolling update meta servers done")
+
 		log.Print("Rolling update collectors...")
 		for _, node := range globalAllNodes {
 			if node.Job() == JobCollector {
@@ -85,7 +87,7 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 		}
 		log.Print("Rolling update collectors done")
 
-		if err := client.Rebalance(false); err != nil {
+		if err := meta.Rebalance(false); err != nil {
 			return err
 		}
 	}
@@ -94,15 +96,15 @@ func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, node
 }
 
 // rolling-update a single node.
-func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNode) error {
+func rollingUpdateNode(deploy Deployment, meta Meta, node *ReplicaNode) error {
 	log.Printf("rolling update replica node \"%s\" [%s]", node.Name(), node.IPPort())
 
 	// TODO(wutao): add a log
-	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
+	if _, err := meta.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
 		return err
 	}
 
-	migratePrimariesOutOfNode(metaClient, node)
+	migratePrimariesOutOfNode(meta, node)
 
 	log.Print("Downgrading replicas on node...")
 	c := 0
@@ -110,13 +112,13 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 	var err error
 	fin, err := waitFor(func() (bool, error) {
 		if c%10 == 0 {
-			gpids, err = metaClient.Downgrade(node.IPPort())
+			gpids, err = meta.Downgrade(node.IPPort())
 			if err != nil {
 				return false, err
 			}
 			log.Print("Sent downgrade propose")
 		}
-		nodes, err := metaClient.ListNodes()
+		nodes, err := meta.ListNodes()
 		if err != nil {
 			return false, err
 		}
@@ -179,7 +181,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 		return err
 	}
 
-	if _, err := metaClient.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "100"); err != nil {
+	if _, err := meta.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "100"); err != nil {
 		return err
 	}
 
@@ -191,7 +193,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 
 	log.Printf("Wait %s to become alive...", node.IPPort())
 	if _, err := waitFor(func() (bool, error) {
-		nodes, err := metaClient.ListNodes()
+		nodes, err := meta.ListNodes()
 		if err != nil {
 			return false, err
 		}
@@ -209,7 +211,7 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 
 	log.Printf("Wait %s to become healthy...", node.IPPort())
 	if _, err := waitFor(func() (bool, error) {
-		infos, err := metaClient.ListTableHealthInfos()
+		infos, err := meta.ListTableHealthInfos()
 		if err != nil {
 			return false, err
 		}
@@ -228,45 +230,6 @@ func rollingUpdateNode(deploy Deployment, metaClient MetaClient, node *ReplicaNo
 	}, time.Duration(10)*time.Second, 0); err != nil {
 		return err
 	}
-
-	return nil
-}
-
-func migratePrimariesOutOfNode(metaClient MetaClient, node *ReplicaNode) error {
-	c := 0
-	log.Print("migrating primary replicas out of node...")
-	fin, err := waitFor(func() (bool, error) {
-		if c%10 == 0 {
-			if err := metaClient.Migrate(node.IPPort()); err != nil {
-				return false, err
-			}
-			log.Print("proposed primaries migration to MetaServer")
-		}
-		nodes, err := metaClient.ListNodes()
-		if err != nil {
-			return false, err
-		}
-		priCount := -1
-		for _, n := range nodes {
-			if n.IPPort() == node.IPPort() {
-				priCount = n.PrimaryCount
-				break
-			}
-		}
-		log.Printf("Still %d primary replicas left on %s", priCount, node.IPPort())
-		c++
-		return priCount == 0, nil
-	}, time.Second, 28)
-
-	if err != nil {
-		return err
-	}
-	if fin {
-		log.Print("migrate done")
-	} else {
-		log.Print("migrate timeout")
-	}
-	time.Sleep(time.Second)
 
 	return nil
 }

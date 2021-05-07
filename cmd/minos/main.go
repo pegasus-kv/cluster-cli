@@ -19,7 +19,8 @@ package main
 
 import (
 	"os"
-	"pegasus-cluster-cli/cmd"
+
+	cmd "github.com/pegasus-kv/cluster-cli/cmd"
 )
 
 func main() {

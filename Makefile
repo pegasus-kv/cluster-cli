@@ -1,4 +1,3 @@
 build:
-	go mod tidy
-	go mod verify
-	go build -o pegasus-cluster-cli cmd/minos/main.go cmd/minos/minos.go
+	go mod verify && go mod tidy
+	go build -o bin/pegasus-cluster-cli cmd/minos/main.go cmd/minos/minos.go

@@ -25,15 +25,6 @@ type ClusterInfo struct {
 	BalanceOperationCount int
 }
 
-// HealthInfo is the health information of a table.
-type HealthInfo struct {
-	PartitionCount int
-	FullyHealthy   int
-	Unhealthy      int
-	WriteUnhealthy int
-	ReadUnhealthy  int
-}
-
 type ReplicaNode struct {
 	name string
 	addr string

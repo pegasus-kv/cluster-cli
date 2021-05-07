@@ -60,9 +60,9 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 	return nil
 }
 
-func removeNode(deploy Deployment, metaClient MetaClient, node Node) error {
+func removeNode(deploy Deployment, metaClient Meta, node Node) error {
 	log.Printf("Stopping replica node %s of %s ...", node.Name(), node.IPPort())
-	if err := metaClient.SetMetaLevel("steady"); err != nil {
+	if err := metaClient.SetMetaLevelSteady(); err != nil {
 		return err
 	}
 

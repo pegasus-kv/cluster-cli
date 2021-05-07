@@ -15,14 +15,21 @@
  * limitations under the License.
  */
 
-namespace go client
+package main
 
-struct command
-{
-    1:string cmd;
-    2:list<string> arguments;
+import pegasus "github.com/pegasus-kv/cluster-cli"
+
+type minosDeployment struct {
 }
 
-service remoteCmdService {
-    string callCommand(1:command cmd);
+func (m *minosDeployment) StartNode(node pegasus.Node) error {
+}
+
+func (m *minosDeployment) StopNode(node pegasus.Node) error {
+}
+
+func (m *minosDeployment) RollingUpdate(node pegasus.Node) error {
+}
+
+func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
 }
