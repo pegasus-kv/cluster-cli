@@ -18,29 +18,37 @@
 package main
 
 import (
+	"os"
+
+	"github.com/pegasus-kv/admin-cli/tabular"
+	pegasus "github.com/pegasus-kv/cluster-cli"
+	"github.com/pegasus-kv/cluster-cli/deployment"
 	"github.com/spf13/cobra"
 )
 
-var (
-	rootCmd *cobra.Command
-)
+func runShow(cmd *cobra.Command, args []string) error {
+	cluster := args[0]
 
-func init() {
-	rootCmd = &cobra.Command{
-		Use:   "minos",
-		Short: "Minos CLI that can operates on Pegasus nodes.",
+	// user name is not required for `show`
+	m := deployment.NewMinos(cluster, "")
+	nodes, err := m.ListAllNodes()
+	if err != nil {
+		return err
 	}
 
-	showCmd := &cobra.Command{
-		Use:       "show",
-		Args:      cobra.ExactValidArgs(1),
-		ValidArgs: []string{"cluster", "user"},
-		Short:     "Show the status of Pegasus nodes",
-		RunE:      runShow,
+	type nodeCmdRow struct {
+		ID     string
+		Job    pegasus.JobType
+		IpPort string `json:"ip_port"`
 	}
-	rootCmd.AddCommand(showCmd)
-}
-
-func main() {
-	_ = rootCmd.Execute()
+	var rows []interface{}
+	for _, n := range nodes {
+		rows = append(rows, nodeCmdRow{
+			ID:     n.Name(),
+			Job:    n.Job(),
+			IpPort: n.IPPort(),
+		})
+	}
+	tabular.Print(os.Stdout, rows)
+	return nil
 }

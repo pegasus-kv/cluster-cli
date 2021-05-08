@@ -41,7 +41,8 @@ type minosDeployment struct {
 	minosAPIAddress string
 }
 
-func newMinosDeployment(cluster string, userName string) pegasus.Deployment {
+// NewMinos returns a deployment of Minos.
+func NewMinos(cluster string, userName string) pegasus.Deployment {
 	d := &minosDeployment{
 		cluster:  cluster,
 		userName: userName,
@@ -89,19 +90,12 @@ func (m *minosDeployment) RollingUpdate(node pegasus.Node) error {
 }
 
 func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
-	type minosShowServiceBody struct {
-		Action   string                 `json:"action"`
-		UserName string                 `json:"user_name"`
-		Step     int                    `json:"step"`
-		OrgIDs   []string               `json:"org_ids"`
-		JobList  map[string]interface{} `json:"job_list"`
-	}
-	reqBody := &minosShowServiceBody{
-		Action:   "show",
-		UserName: m.userName,
-		Step:     1,
-		OrgIDs:   []string{m.orgID},
-		JobList:  map[string]interface{}{},
+	reqBody := map[string]interface{}{
+		"action":    "show",
+		"user_name": m.userName,
+		"step":      1,
+		"org_ids":   []string{m.orgID},
+		"job_list":  map[string]interface{}{},
 	}
 
 	type nodeDetails struct {
