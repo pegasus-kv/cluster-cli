@@ -33,7 +33,7 @@ func AddNodes(cluster string, deploy Deployment, metaList string, nodeNames []st
 		return err
 	}
 
-	if err = client.SetMetaLevel("steady"); err != nil {
+	if err = client.SetMetaLevelSteady(); err != nil {
 		return err
 	}
 

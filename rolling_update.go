@@ -21,7 +21,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/pegasus-kv/cluster-cli/client"
+	"github.com/pegasus-kv/admin-cli/client"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -100,7 +100,7 @@ func rollingUpdateNode(deploy Deployment, meta Meta, node *ReplicaNode) error {
 	log.Printf("rolling update replica node \"%s\" [%s]", node.Name(), node.IPPort())
 
 	// TODO(wutao): add a log
-	if _, err := meta.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "0"); err != nil {
+	if err := meta.SetAddSecondaryMaxCountForOneNode(0); err != nil {
 		return err
 	}
 
@@ -181,7 +181,7 @@ func rollingUpdateNode(deploy Deployment, meta Meta, node *ReplicaNode) error {
 		return err
 	}
 
-	if _, err := meta.RemoteCommand("meta.lb.add_secondary_max_count_for_one_node", "100"); err != nil {
+	if err := meta.SetAddSecondaryMaxCountForOneNode(100); err != nil {
 		return err
 	}
 

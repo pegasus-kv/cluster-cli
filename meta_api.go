@@ -38,14 +38,21 @@ type Meta interface {
 	SetMetaLevelSteady() error
 	SetMetaLevelLively() error
 
-	Rebalance(bool) error
-
 	SetOnlyMovePrimary() error
+	UnsetOnlyMovePrimary() error
 
-	ResetAddSecondaryMaxCountForOneNode() error
 	SetAddSecondaryMaxCountForOneNode(num int) error
 
+	SetNodeLivePercentageZero() error
+
+	AssignSecondaryBlackList(blacklist string) error
+
+	SetAssignDelayMs(delayMs int) error
+	ResetDefaultAssignDelayMs() error
+
 	MigratePrimariesOut(ipPort string) error
+
+	Rebalance(bool) error
 
 	Downgrade(string) ([]string, error)
 
@@ -79,7 +86,7 @@ func NewMetaClient(cluster string, metaList string) (Meta, error) {
 	return c, nil
 }
 
-// TODO(wutao): use mapsturecture to parse map into struct
+// TODO(wutao): use mapstructure to parse map into struct
 func (c *metaClient) GetClusterInfo() (*ClusterInfo, error) {
 	infoMap, err := c.meta.QueryClusterInfo()
 	if err != nil {
@@ -128,11 +135,27 @@ func (c *metaClient) SetOnlyMovePrimary() error {
 	return nil
 }
 
-func (c *metaClient) ResetAddSecondaryMaxCountForOneNode() error {
+func (c *metaClient) UnsetOnlyMovePrimary() error {
 	return nil
 }
 
 func (c *metaClient) SetAddSecondaryMaxCountForOneNode(num int) error {
+	return nil
+}
+
+func (c *metaClient) SetNodeLivePercentageZero() error {
+	return nil
+}
+
+func (c *metaClient) AssignSecondaryBlackList(blacklist string) error {
+	return nil
+}
+
+func (c *metaClient) SetAssignDelayMs(delayMs int) error {
+	return nil
+}
+
+func (c *metaClient) ResetDefaultAssignDelayMs() error {
 	return nil
 }
 
@@ -146,7 +169,7 @@ func (c *metaClient) SetMetaLevelLively() error {
 
 func (c *metaClient) Rebalance(primaryOnly bool) error {
 	if primaryOnly {
-		if _, err := c.RemoteCommand("meta.lb.only_move_primary", "true"); err != nil {
+		if err := c.SetOnlyMovePrimary(); err != nil {
 			return err
 		}
 	}
@@ -178,12 +201,12 @@ func (c *metaClient) Rebalance(primaryOnly bool) error {
 		}
 	}
 
-	if err := c.SetMetaLevel("steady"); err != nil {
+	if err := c.SetMetaLevelSteady(); err != nil {
 		return err
 	}
 
 	if primaryOnly {
-		if _, err := c.RemoteCommand("meta.lb.only_move_primary", "false"); err != nil {
+		if err := c.UnsetOnlyMovePrimary(); err != nil {
 			return err
 		}
 	}

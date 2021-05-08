@@ -34,11 +34,14 @@ type Deployment interface {
 	StopNode(Node) error
 
 	// Rolling-update a Pegasus node on the specified machine. A possible implementation
-	// may login to the machine, redownload the binary package and config and restart the process.
+	// may login to the machine, re-download the binary package and config and restart the process.
 	RollingUpdate(Node) error
 
 	// Retrieves all nodes information in the Pegasus cluster.
 	ListAllNodes() ([]Node, error)
+
+	// Name returns a simple name identifies the deployment system.
+	Name() string
 }
 
 // CreateDeployment creates a non-nil instance of Deployment that binds to a specific cluster.

@@ -18,7 +18,6 @@
 package pegasus
 
 import (
-	"errors"
 	"time"
 )
 
@@ -42,6 +41,6 @@ func waitFor(checker func() (bool, error), interval time.Duration, timeout int) 
 	}
 }
 
-func newCommandError(msg string, out []byte) error {
-	return errors.New(msg + ". Output:\n" + string(out))
+func waitForNodeBecome(meta Meta, checker func()) error {
+	return nil
 }

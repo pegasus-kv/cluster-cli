@@ -21,8 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"pegasus-cluster-cli"
 
+	pegasus "github.com/pegasus-kv/cluster-cli"
 	"github.com/spf13/cobra"
 )
 
@@ -31,20 +31,9 @@ var (
 	cluster  string
 	metaList string
 	nodes    []string
-	shellDir string
 	RootCmd  = &cobra.Command{
 		Use:   "pegasus-cluster-cli",
 		Short: "A command line tool to easily add/remove/update nodes in pegasus cluster",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if shellDir == "" {
-				return errors.New("pegasus-shell-dir is empty, set flag --shell-dir or env PEGASUS_SHELL_PATH")
-			}
-			pegasus.SetShellDir(shellDir)
-			if ValidateEnvsHook != nil {
-				return ValidateEnvsHook()
-			}
-			return nil
-		},
 	}
 	addNodeCmd = &cobra.Command{
 		Use:   "add-node",
@@ -99,20 +88,12 @@ var (
 			}
 		},
 	}
-
-	// ValidateEnvsHook validates the customized environment variables (whhich can set from flags)
-	// before the execution of command.
-	ValidateEnvsHook func() error = nil
 )
 
 func init() {
 	RootCmd.PersistentFlags().StringVarP(&cluster, "cluster", "c", "", "name of the cluster to take action on")
-	RootCmd.PersistentFlags().StringVarP(&metaList, "meta-list", "m", "", "a list of meta servers(ip:port), seperated by comma")
 	RootCmd.PersistentFlags().StringArrayVarP(&nodes, "node", "n", []string{}, "list of nodes to take action on")
-	RootCmd.PersistentFlags().StringVar(&shellDir, "shell-dir", os.Getenv("PEGASUS_SHELL_PATH"), "directory of pegasus binary package. Could be set from env PEGASUS_SHELL_PATH")
 	_ = RootCmd.MarkPersistentFlagRequired("cluster")
-	_ = RootCmd.MarkPersistentFlagRequired("meta-list")
-	_ = RootCmd.MarkPersistentFlagDirname("shell-dir")
 	rollingUpdateCmd.Flags().BoolVarP(&all, "all", "a", false, "whether to update all nodes")
 	RootCmd.AddCommand(addNodeCmd, removeNodeCmd, rollingUpdateCmd)
 }

@@ -19,7 +19,6 @@ package pegasus
 
 import (
 	"errors"
-	"pegasus-cluster-cli/client"
 	"strings"
 	"time"
 
@@ -45,10 +44,10 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 		nodes[i] = node
 		addrs[i] = node.IPPort()
 	}
-	if _, err := client.RemoteCommand("meta.lb.assign_secondary_black_list", strings.Join(addrs, ",")); err != nil {
+	if err := client.AssignSecondaryBlackList(strings.Join(addrs, ",")); err != nil {
 		return err
 	}
-	if _, err := client.RemoteCommand("meta.live_percentage", "0"); err != nil {
+	if err := client.SetNodeLivePercentageZero(); err != nil {
 		return err
 	}
 
@@ -65,14 +64,13 @@ func removeNode(deploy Deployment, metaClient Meta, node Node) error {
 	if err := metaClient.SetMetaLevelSteady(); err != nil {
 		return err
 	}
-
-	if _, err := metaClient.RemoteCommand("meta.lb.assign_delay_ms", "10"); err != nil {
+	if err := metaClient.SetAssignDelayMs(10); err != nil {
 		return err
 	}
 
 	// migrate node
 	log.Print("Migrating primary replicas out of node...")
-	if err := metaClient.Migrate(node.IPPort()); err != nil {
+	if err := metaClient.MigratePrimariesOut(node.IPPort()); err != nil {
 		return err
 	}
 	// wait for pri_count == 0
@@ -167,7 +165,7 @@ func removeNode(deploy Deployment, metaClient Meta, node Node) error {
 		return err
 	}
 
-	if _, err := metaClient.RemoteCommand("meta.lb.assign_delay_ms", "DEFAULT"); err != nil {
+	if err := metaClient.ResetDefaultAssignDelayMs(); err != nil {
 		return err
 	}
 	return nil
