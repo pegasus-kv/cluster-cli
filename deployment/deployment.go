@@ -65,13 +65,26 @@ type Node struct {
 	IPPort string `json:"ip_port"`
 
 	Hostname string `json:"hostname"`
+
+	// Attrs contains the additional attributes that are provided by the specific Deployment.
+	// This field is optional, can be left empty.
+	// A typical use-case could be giving a "Status" that represents the node running status:
+	//   Attrs : map[string]interface{"Status" : "Running"}
+	// It will be useful to check if the node behaves normal after start/stop/rolling-update.
+	Attrs map[string]interface{}
 }
 
 // NewNode returns a Node.
 func NewNode(name string, tcpAddr string, job JobType) Node {
 	// resolve ip
 	n := util.NewNodeFromTCPAddr(tcpAddr, session.NodeTypeReplica /*dummy field*/)
-	return Node{Job: job, Name: name, IPPort: n.TCPAddr(), Hostname: n.Hostname}
+	return Node{
+		Job:      job,
+		Name:     name,
+		IPPort:   n.TCPAddr(),
+		Hostname: n.Hostname,
+		Attrs:    map[string]interface{}{},
+	}
 }
 
 type JobType int

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http/httputil"
 	"os"
+	"strconv"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -35,7 +36,7 @@ type minosDeployment struct {
 	userName string
 
 	// the pegasus team's MiCloud orgID
-	orgID string
+	orgID int
 	// the minos api service url
 	minosAPIAddress string
 	// the pegasus gateway url
@@ -54,9 +55,14 @@ func NewMinos(cluster string, userName string) Deployment {
 		panic("Please set the environment variable MINOS_API_URL")
 	}
 
-	d.orgID = os.Getenv("PEGASUS_TEAM_ORG_ID")
-	if d.orgID == "" {
+	orgIDEnvVal := os.Getenv("PEGASUS_TEAM_ORG_ID")
+	if orgIDEnvVal == "" {
 		panic("Please set the environment variable PEGASUS_TEAM_ORG_ID")
+	}
+	var err error
+	d.orgID, err = strconv.Atoi(orgIDEnvVal)
+	if err != nil {
+		panic(fmt.Sprintf("PEGASUS_TEAM_ORG_ID is not a valid integer: \"%s\"", orgIDEnvVal))
 	}
 
 	d.pegasusGatewayURL = os.Getenv("PEGASUS_GATEWAY_URL")
@@ -68,26 +74,67 @@ func NewMinos(cluster string, userName string) Deployment {
 	return d
 }
 
+type minosOpRetVal struct {
+	ErrorMsg  string `json:"error_msg"`
+	ErrorCode int    `json:"error_code"`
+}
+
+type minosOpResponse struct {
+	Retval  minosOpRetVal `json:"retval"`
+	Success bool          `json:"success"`
+}
+
 func (m *minosDeployment) StartNode(node Node) error {
-	type minosStartServiceBody struct {
-		Action        string   `json:"action"`
-		UserName      string   `json:"user_name"`
-		UpdatePackage int      `json:"update_package"`
-		UpdateConfig  int      `json:"update_config"`
-		Step          int      `json:"step"`
-		Concurrency   int      `json:"concurrency"`
-		JobList       []string `json:"job_list"`
-		OrgIDs        []string `json:"org_ids"`
+	taskID, _ := strconv.Atoi(node.Name)
+
+	reqBody := map[string]interface{}{
+		"action":    "start",
+		"user_name": m.userName,
+		"org_ids":   []int{m.orgID},
+		"job_list": map[string]interface{}{
+			node.Job.String(): []int{taskID},
+		},
+		"concurrency": 1,
+		"step":        0,
 	}
 
-	resp, err := m.client.R().Post(m.minosAPIAddress + "/" + m.cluster)
-	if err := handleRestyError("MinosStartNode", err, resp); err != nil {
+	var results minosOpResponse
+	resp, err := m.client.R().
+		SetBody(reqBody).
+		Post(m.minosAPIAddress + "/cloud_manager/pegasus-" + m.cluster + "?action")
+	if err := handleRestyResult("MinosStart", err, resp, &results); err != nil {
 		return err
+	}
+	if !results.Success {
+		return fmt.Errorf("code: %d, message: %s", results.Retval.ErrorCode, results.Retval.ErrorMsg)
 	}
 	return nil
 }
 
 func (m *minosDeployment) StopNode(node Node) error {
+	taskID, _ := strconv.Atoi(node.Name)
+
+	reqBody := map[string]interface{}{
+		"action":    "stop",
+		"user_name": m.userName,
+		"org_ids":   []int{m.orgID},
+		"job_list": map[string]interface{}{
+			node.Job.String(): []int{taskID},
+		},
+		"concurrency": 1,
+		"step":        0,
+	}
+
+	var results minosOpResponse
+	resp, err := m.client.R().
+		SetBody(reqBody).
+		Post(m.minosAPIAddress + "/cloud_manager/pegasus-" + m.cluster + "?action")
+	if err := handleRestyResult("MinosStop", err, resp, &results); err != nil {
+		return err
+	}
+	if !results.Success {
+		return fmt.Errorf("code: %d, message: %s", results.Retval.ErrorCode, results.Retval.ErrorMsg)
+	}
 	return nil
 }
 
@@ -134,7 +181,7 @@ func handleRestyError(op string, err error, resp *resty.Response) error {
 	if !resp.IsSuccess() {
 		reqBytes, _ := httputil.DumpRequest(resp.Request.RawRequest, true)
 		reqBodyBytes, _ := json.MarshalIndent(resp.Request.Body, "", "  ")
-		return fmt.Errorf("%s failed: %s %s%s\n%s", op, resp.Status(), string(reqBytes), reqBodyBytes, resp.Body())
+		return fmt.Errorf("%s failed: %s %s%s\n\nResponse: %s", op, resp.Status(), string(reqBytes), reqBodyBytes, resp.Body())
 	}
 	return nil
 }

@@ -41,6 +41,10 @@ func runShow(cmd *cobra.Command, args []string) error {
 
 	// user name is not required for `show`
 	m := deployment.NewMinos(cluster, "")
+	return printAllNodes(m)
+}
+
+func printAllNodes(m deployment.Deployment) error {
 	nodes, err := m.ListAllNodes()
 	if err != nil {
 		return err
