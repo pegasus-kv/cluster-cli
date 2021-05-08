@@ -84,62 +84,47 @@ type minosOpResponse struct {
 	Success bool          `json:"success"`
 }
 
-func (m *minosDeployment) StartNode(node Node) error {
+// The minos RESTFul API is basically general for start/stop/rolling-update operations.
+// So we use a generic function for them all.
+func (m *minosDeployment) performGenericMinosOp(opType string, node Node) error {
 	taskID, _ := strconv.Atoi(node.Name)
 
 	reqBody := map[string]interface{}{
-		"action":    "start",
+		"action":    opType,
 		"user_name": m.userName,
 		"org_ids":   []int{m.orgID},
 		"job_list": map[string]interface{}{
 			node.Job.String(): []int{taskID},
 		},
-		"concurrency": 1,
-		"step":        0,
+		"concurrency":    1,
+		"step":           0,
+		"update_package": 1,
+		"update_config":  1,
 	}
 
 	var results minosOpResponse
 	resp, err := m.client.R().
 		SetBody(reqBody).
 		Post(m.minosAPIAddress + "/cloud_manager/pegasus-" + m.cluster + "?action")
-	if err := handleRestyResult("MinosStart", err, resp, &results); err != nil {
+	if err := handleRestyResult("minos_"+opType, err, resp, &results); err != nil {
 		return err
 	}
 	if !results.Success {
 		return fmt.Errorf("code: %d, message: %s", results.Retval.ErrorCode, results.Retval.ErrorMsg)
 	}
 	return nil
+}
+
+func (m *minosDeployment) StartNode(node Node) error {
+	return m.performGenericMinosOp("start", node)
 }
 
 func (m *minosDeployment) StopNode(node Node) error {
-	taskID, _ := strconv.Atoi(node.Name)
-
-	reqBody := map[string]interface{}{
-		"action":    "stop",
-		"user_name": m.userName,
-		"org_ids":   []int{m.orgID},
-		"job_list": map[string]interface{}{
-			node.Job.String(): []int{taskID},
-		},
-		"concurrency": 1,
-		"step":        0,
-	}
-
-	var results minosOpResponse
-	resp, err := m.client.R().
-		SetBody(reqBody).
-		Post(m.minosAPIAddress + "/cloud_manager/pegasus-" + m.cluster + "?action")
-	if err := handleRestyResult("MinosStop", err, resp, &results); err != nil {
-		return err
-	}
-	if !results.Success {
-		return fmt.Errorf("code: %d, message: %s", results.Retval.ErrorCode, results.Retval.ErrorMsg)
-	}
-	return nil
+	return m.performGenericMinosOp("stop", node)
 }
 
 func (m *minosDeployment) RollingUpdate(node Node) error {
-	return nil
+	return m.performGenericMinosOp("rolling_update", node)
 }
 
 func (m *minosDeployment) ListAllNodes() ([]Node, error) {

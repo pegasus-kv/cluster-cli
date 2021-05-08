@@ -33,6 +33,6 @@ func init() {
 }
 
 func main() {
-	rootCmd.AddCommand(showCmd, startCmd, stopCmd)
+	rootCmd.AddCommand(showCmd, startCmd, stopCmd, rollingUpdateCmd)
 	_ = rootCmd.Execute()
 }

@@ -20,6 +20,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/manifoldco/promptui"
 	"github.com/pegasus-kv/cluster-cli/deployment"
 	"github.com/spf13/cobra"
 )
@@ -66,20 +67,28 @@ func runNodeOp(cmd *cobra.Command, args []string, op nodeOpFunc) error {
 		jobType = deployment.JobMeta
 	case "collector":
 		jobType = deployment.JobCollector
+	default:
+		return fmt.Errorf("unrecognized type of node \"%s\"", jobArg)
+	}
+
+	// Require confirmation to proceed. This is to prevent mis-operation.
+	prompt := promptui.Prompt{
+		Label:     "Please type 'y' to confirm",
+		IsConfirm: true,
+	}
+	_, err := prompt.Run()
+	if err != nil {
+		fmt.Printf("Cancelled operation \"%s\" on %s %s %d\n", cmd.Name(), cluster, jobArg, taskID)
+		return nil
 	}
 
 	m := deployment.NewMinos(cluster, "")
-	err := op(m, deployment.Node{Name: fmt.Sprint(taskID), Job: jobType})
+	err = op(m, deployment.Node{Name: fmt.Sprint(taskID), Job: jobType})
 	if err != nil {
 		fmt.Println(err.Error())
+	} else {
+		fmt.Println("Success")
 	}
-
-	fmt.Println("Success")
-	err = printAllNodes(m)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-
 	return nil
 }
 
