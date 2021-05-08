@@ -19,11 +19,21 @@ package main
 
 import (
 	"os"
+	"sort"
+	"strconv"
 
 	"github.com/pegasus-kv/admin-cli/tabular"
-	pegasus "github.com/pegasus-kv/cluster-cli"
 	"github.com/pegasus-kv/cluster-cli/deployment"
 	"github.com/spf13/cobra"
+)
+
+var (
+	showCmd = &cobra.Command{
+		Use:   "show <cluster_name>",
+		Args:  cobra.ExactArgs(1),
+		Short: "Show the status of Pegasus nodes",
+		RunE:  runShow,
+	}
 )
 
 func runShow(cmd *cobra.Command, args []string) error {
@@ -36,18 +46,18 @@ func runShow(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	type nodeCmdRow struct {
-		ID     string
-		Job    pegasus.JobType
-		IpPort string `json:"ip_port"`
-	}
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].Job == nodes[j].Job {
+			idI, _ := strconv.Atoi(nodes[i].Name)
+			idJ, _ := strconv.Atoi(nodes[j].Name)
+			return idI < idJ
+		}
+		return nodes[i].Job < nodes[j].Job
+	})
+
 	var rows []interface{}
 	for _, n := range nodes {
-		rows = append(rows, nodeCmdRow{
-			ID:     n.Name(),
-			Job:    n.Job(),
-			IpPort: n.IPPort(),
-		})
+		rows = append(rows, n)
 	}
 	tabular.Print(os.Stdout, rows)
 	return nil

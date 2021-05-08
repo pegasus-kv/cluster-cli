@@ -24,7 +24,6 @@ import (
 	"os"
 
 	"github.com/go-resty/resty/v2"
-	pegasus "github.com/pegasus-kv/cluster-cli"
 )
 
 type minosDeployment struct {
@@ -37,12 +36,14 @@ type minosDeployment struct {
 
 	// the pegasus team's MiCloud orgID
 	orgID string
-
+	// the minos api service url
 	minosAPIAddress string
+	// the pegasus gateway url
+	pegasusGatewayURL string
 }
 
 // NewMinos returns a deployment of Minos.
-func NewMinos(cluster string, userName string) pegasus.Deployment {
+func NewMinos(cluster string, userName string) Deployment {
 	d := &minosDeployment{
 		cluster:  cluster,
 		userName: userName,
@@ -58,11 +59,16 @@ func NewMinos(cluster string, userName string) pegasus.Deployment {
 		panic("Please set the environment variable PEGASUS_TEAM_ORG_ID")
 	}
 
+	d.pegasusGatewayURL = os.Getenv("PEGASUS_GATEWAY_URL")
+	if d.pegasusGatewayURL == "" {
+		panic("Please set the environment variable PEGASUS_GATEWAY_URL")
+	}
+
 	d.client = resty.New()
 	return d
 }
 
-func (m *minosDeployment) StartNode(node pegasus.Node) error {
+func (m *minosDeployment) StartNode(node Node) error {
 	type minosStartServiceBody struct {
 		Action        string   `json:"action"`
 		UserName      string   `json:"user_name"`
@@ -81,52 +87,38 @@ func (m *minosDeployment) StartNode(node pegasus.Node) error {
 	return nil
 }
 
-func (m *minosDeployment) StopNode(node pegasus.Node) error {
+func (m *minosDeployment) StopNode(node Node) error {
 	return nil
 }
 
-func (m *minosDeployment) RollingUpdate(node pegasus.Node) error {
+func (m *minosDeployment) RollingUpdate(node Node) error {
 	return nil
 }
 
-func (m *minosDeployment) ListAllNodes() ([]pegasus.Node, error) {
-	reqBody := map[string]interface{}{
-		"action":    "show",
-		"user_name": m.userName,
-		"step":      1,
-		"org_ids":   []string{m.orgID},
-		"job_list":  map[string]interface{}{},
-	}
-
+func (m *minosDeployment) ListAllNodes() ([]Node, error) {
 	type nodeDetails struct {
-		Host string `json:"host"`
+		Job    string `json:"job"`
+		TaskID int    `json:"task_id"`
 	}
-	type nodesByType struct {
-		Collector map[string]nodeDetails `json:"collector"`
-		Replica   map[string]nodeDetails `json:"replica"`
-		Meta      map[string]nodeDetails `json:"meta"`
-	}
-	type showResults struct { // The body of response
-		Retval nodesByType `json:"retval"`
-	}
-	var results showResults
+	var results map[string]nodeDetails
 
-	resp, err := m.client.R().
-		SetBody(reqBody).
-		Post(m.minosAPIAddress + "/cloud_manager/pegasus-" + m.cluster + "?action")
-	if err := handleRestyResult("MinosShow", err, resp, &results); err != nil {
+	resp, err := m.client.R().Post(m.pegasusGatewayURL + "/endpoints?cluster=" + m.cluster)
+	if err := handleRestyResult("GatewayListEndpoints", err, resp, &results); err != nil {
 		return nil, err
 	}
 
-	var allNodes []pegasus.Node
-	for id, collector := range results.Retval.Collector {
-		allNodes = append(allNodes, pegasus.NewNode(id, collector.Host, pegasus.JobCollector))
-	}
-	for id, replica := range results.Retval.Replica {
-		allNodes = append(allNodes, pegasus.NewNode(id, replica.Host, pegasus.JobReplica))
-	}
-	for id, meta := range results.Retval.Meta {
-		allNodes = append(allNodes, pegasus.NewNode(id, meta.Host, pegasus.JobMeta))
+	var allNodes []Node
+	for tcpAddr, n := range results {
+		var job JobType
+		switch n.Job {
+		case "replica":
+			job = JobReplica
+		case "collector":
+			job = JobCollector
+		case "meta":
+			job = JobMeta
+		}
+		allNodes = append(allNodes, NewNode(fmt.Sprint(n.TaskID), tcpAddr, job))
 	}
 	return allNodes, nil
 }

@@ -15,7 +15,12 @@
  * limitations under the License.
  */
 
-package pegasus
+package deployment
+
+import (
+	"github.com/XiaoMi/pegasus-go-client/session"
+	"github.com/pegasus-kv/admin-cli/util"
+)
 
 // Deployment is the abstraction of a deployment automation system that provides
 // the ability to operate all the nodes in a Pegasus cluster.
@@ -49,15 +54,24 @@ var CreateDeployment func(cluster string) Deployment = nil
 
 // Node could be a MetaServer/ReplicaServer/Collector. Provided with a Node, the implementation of
 // Deployment must be able to remotely operates the node.
-type Node interface {
-	Job() JobType
+type Node struct {
+	Job JobType `json:"job"`
 
 	// Node's name should be unique within the cluster.
 	// There's no strict rule on the naming of a node.
 	// It could be some ID like "1", "2" ..., or a hostname, UUID, TCP address, etc.
-	Name() string
+	Name string `json:"name"`
 
-	IPPort() string
+	IPPort string `json:"ip_port"`
+
+	Hostname string `json:"hostname"`
+}
+
+// NewNode returns a Node.
+func NewNode(name string, tcpAddr string, job JobType) Node {
+	// resolve ip
+	n := util.NewNodeFromTCPAddr(tcpAddr, session.NodeTypeReplica /*dummy field*/)
+	return Node{Job: job, Name: name, IPPort: n.TCPAddr(), Hostname: n.Hostname}
 }
 
 type JobType int

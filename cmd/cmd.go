@@ -23,6 +23,7 @@ import (
 	"os"
 
 	pegasus "github.com/pegasus-kv/cluster-cli"
+	"github.com/pegasus-kv/cluster-cli/deployment"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +46,7 @@ var (
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			deploy := pegasus.CreateDeployment(cluster)
+			deploy := deployment.CreateDeployment(cluster)
 			if err := pegasus.AddNodes(cluster, deploy, metaList, nodes); err != nil {
 				fmt.Println(err)
 				os.Exit(1)
@@ -62,7 +63,7 @@ var (
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			deploy := pegasus.CreateDeployment(cluster)
+			deploy := deployment.CreateDeployment(cluster)
 			if err := pegasus.RemoveNodes(cluster, deploy, metaList, nodes); err != nil {
 				fmt.Println(err)
 				os.Exit(1)
@@ -81,7 +82,7 @@ var (
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			deploy := pegasus.CreateDeployment(cluster)
+			deploy := deployment.CreateDeployment(cluster)
 			if err := pegasus.RollingUpdateNodes(cluster, deploy, metaList, nodes); err != nil {
 				fmt.Println(err)
 				os.Exit(1)

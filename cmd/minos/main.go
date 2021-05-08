@@ -30,17 +30,9 @@ func init() {
 		Use:   "minos",
 		Short: "Minos CLI that can operates on Pegasus nodes.",
 	}
-
-	showCmd := &cobra.Command{
-		Use:       "show",
-		Args:      cobra.ExactValidArgs(1),
-		ValidArgs: []string{"cluster", "user"},
-		Short:     "Show the status of Pegasus nodes",
-		RunE:      runShow,
-	}
-	rootCmd.AddCommand(showCmd)
 }
 
 func main() {
+	rootCmd.AddCommand(showCmd)
 	_ = rootCmd.Execute()
 }
