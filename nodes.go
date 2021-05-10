@@ -18,37 +18,40 @@
 package pegasus
 
 import (
-	"errors"
-	"github.com/pegasus-kv/admin-cli/client"
 	"github.com/pegasus-kv/cluster-cli/deployment"
-	log "github.com/sirupsen/logrus"
+	"github.com/pegasus-kv/cluster-cli/meta"
 )
 
-// AddNodes implements the add-node command.
-func AddNodes(cluster string, deploy deployment.Deployment, nodeNames []string) error {
-	meta, err := newMeta(cluster, deploy)
+var globalAllNodes []deployment.Node
+
+func listAndCacheAllNodes(deploy deployment.Deployment) error {
+	res, err := deploy.ListAllNodes()
 	if err != nil {
 		return err
 	}
-
-	if err = meta.SetMetaLevelSteady(); err != nil {
-		return err
-	}
-
-	for _, name := range nodeNames {
-		node, ok := findReplicaNode(name)
-		if !ok {
-			return errors.New("replica node '" + name + "' not found")
-		}
-		log.Printf("Starting node %s by deployment...", node.IPPort())
-		if err := deploy.StartNode(node); err != nil {
-			return err
-		}
-		log.Print("Starting node by deployment done")
-	}
-	if err := client.Rebalance(false); err != nil {
-		return err
-	}
-
+	globalAllNodes = res
 	return nil
+}
+
+func findNode(name string, jobType deployment.JobType) *deployment.Node {
+	for _, node := range globalAllNodes {
+		if node.Job == jobType && name == node.Name {
+			return &node
+		}
+	}
+	return nil
+}
+
+// A simple wrapper around NewMetaClient.
+func newMeta(cluster string, deploy deployment.Deployment) (meta.Meta, error) {
+	if err := listAndCacheAllNodes(deploy); err != nil {
+		return nil, err
+	}
+	var metaList []string
+	for _, n := range globalAllNodes {
+		if n.Job == deployment.JobMeta {
+			metaList = append(metaList, n.IPPort)
+		}
+	}
+	return meta.NewMetaClient(cluster, metaList)
 }

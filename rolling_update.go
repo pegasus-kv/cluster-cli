@@ -18,218 +18,146 @@
 package pegasus
 
 import (
-	"errors"
+	"fmt"
+	"github.com/XiaoMi/pegasus-go-client/idl/admin"
 	"time"
 
+	"github.com/XiaoMi/pegasus-go-client/session"
 	"github.com/pegasus-kv/admin-cli/client"
+	"github.com/pegasus-kv/admin-cli/util"
+	"github.com/pegasus-kv/cluster-cli/deployment"
+	metaApi "github.com/pegasus-kv/cluster-cli/meta"
 	log "github.com/sirupsen/logrus"
 )
 
-// RollingUpdateNodes implements the rolling-update command.
-// If `nodeNames` are given nil, it means rolling-update on all nodes, including Meta/Collector.
-// If not nil, it executes rolling-update on only the Replica nodes specified.
-func RollingUpdateNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
-	if err := listAndCacheAllNodes(deploy); err != nil {
-		return err
-	}
-	meta, err := NewMetaClient(cluster, metaList)
+type Updater struct {
+	meta   metaApi.Meta
+	deploy deployment.Deployment
+}
+
+func PrepareRollingUpdate(cluster string, deploy deployment.Deployment) (*Updater, error) {
+	meta, err := newMeta(cluster, deploy)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// preparation: stop automatic rebalance
 	if err := meta.SetMetaLevelSteady(); err != nil {
-		return err
+		return nil, err
 	}
 
-	if nodeNames == nil {
-		for _, n := range globalAllNodes {
-			if rn, ok := n.(*ReplicaNode); ok {
-				if err := rollingUpdateNode(deploy, meta, rn); err != nil {
-					return err
-				}
-			}
-		}
-	} else {
-		for _, name := range nodeNames {
-			node, ok := findReplicaNode(name)
-			if !ok {
-				return errors.New("replica node '" + name + "' not found")
-			}
-			if err := rollingUpdateNode(deploy, meta, node); err != nil {
-				return err
-			}
-		}
+	return &Updater{
+		meta:   meta,
+		deploy: deploy,
+	}, nil
+}
+
+func (u *Updater) FindAndUpdateNode(nodeName string, jobType deployment.JobType) error {
+	node := findNode(nodeName, jobType)
+	if node == nil {
+		return fmt.Errorf("%s node '%s' was not found", jobType, nodeName)
 	}
-
-	if err := meta.ResetAddSecondaryMaxCountForOneNode(); err != nil {
-		return err
-	}
-
-	if nodeNames == nil {
-		log.Print("Rolling update meta servers...")
-		for _, node := range globalAllNodes {
-			if node.Job() == JobMeta {
-				if err := deploy.RollingUpdate(node); err != nil {
-					return err
-				}
-			}
-		}
-		log.Print("Rolling update meta servers done")
-
-		log.Print("Rolling update collectors...")
-		for _, node := range globalAllNodes {
-			if node.Job() == JobCollector {
-				if err := deploy.RollingUpdate(node); err != nil {
-					return err
-				}
-			}
-		}
-		log.Print("Rolling update collectors done")
-
-		if err := meta.Rebalance(false); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return u.UpdateNode(node)
 }
 
 // rolling-update a single node.
-func rollingUpdateNode(deploy Deployment, meta Meta, node *ReplicaNode) error {
-	log.Printf("rolling update replica node \"%s\" [%s]", node.Name(), node.IPPort())
+func (u *Updater) UpdateNode(node *deployment.Node) error {
+	switch node.Job {
+	case deployment.JobCollector:
+		return u.updateStatelessNode(node)
+	case deployment.JobMeta:
+		return u.updateStatelessNode(node)
+	case deployment.JobReplica:
+		return u.updateSingleReplicaNode(node)
+	default:
+		return fmt.Errorf("unknown node type: \"%s\"", node.Job)
+	}
+}
 
-	// TODO(wutao): add a log
-	if err := meta.SetAddSecondaryMaxCountForOneNode(0); err != nil {
+// Stateless node means any node other than ReplicaServer. Simple rolling is fine.
+func (u *Updater) updateStatelessNode(node *deployment.Node) error {
+	return u.deploy.RollingUpdate(*node)
+}
+
+func (u *Updater) updateSingleReplicaNode(nInfo *deployment.Node) error {
+	log.Debug("set meta.lb.add_secondary_max_count_for_one_node to 0")
+	if err := u.meta.SetAddSecondaryMaxCountForOneNode(0); err != nil {
 		return err
 	}
 
-	migratePrimariesOutOfNode(meta, node)
+	node := util.NewNodeFromTCPAddr(nInfo.IPPort, session.NodeTypeReplica)
 
-	log.Print("Downgrading replicas on node...")
-	c := 0
-	var gpids []string
-	var err error
-	fin, err := waitFor(func() (bool, error) {
-		if c%10 == 0 {
-			gpids, err = meta.Downgrade(node.IPPort())
-			if err != nil {
-				return false, err
-			}
-			log.Print("Sent downgrade propose")
-		}
-		nodes, err := meta.ListNodes()
-		if err != nil {
-			return false, err
-		}
-		priCount := -1
-		for _, n := range nodes {
-			if n.IPPort() == node.IPPort() {
-				priCount = n.PrimaryCount
-			}
-		}
-		log.Printf("Still %d primary replicas left on %s", priCount, node.IPPort())
-		c++
-		return priCount == 0, nil
-	}, time.Second, 28)
-	if err != nil {
+	// Safely downgrades replicas from node, as no primary was directly effected.
+	if err := u.meta.MigratePrimariesOut(node); err != nil {
 		return err
 	}
-	if fin {
-		log.Print("Downgrade done")
-	} else {
-		log.Print("Downgrade timeout")
-	}
-	time.Sleep(time.Second)
-
-	// TODO: Check replicas closed on node here
-	remoteCmdClient := client.NewRemoteCmdClient(node.IPPort())
-	c = 0
-	log.Print("Checking replicas closed on node...")
-	fin, err = waitFor(func() (bool, error) {
-		if c%10 == 0 {
-			log.Print("Send kill_partition commands to node...")
-			for _, gpid := range gpids {
-				if _, err := remoteCmdClient.KillPartition(gpid); err != nil {
-					return false, err
-				}
-			}
-			log.Printf("Sent to %d partitions.", len(gpids))
-		}
-		counters, err := remoteCmdClient.GetPerfCounters(".*replica(Count)")
-		if err != nil {
-			return false, err
-		}
-		count := 0
-		for _, counter := range counters {
-			count += int(counter.Value)
-		}
-		log.Printf("Still %d replicas not closed on %s", count, node.IPPort())
-		c++
-		return count == 0, nil
-	}, time.Second, 28)
-	if err != nil {
-		return err
-	}
-	if fin {
-		log.Print("Close done.")
-	} else {
-		log.Print("Close timeout.")
-	}
-
-	if _, err := remoteCmdClient.Call("flush_log", nil); err != nil {
+	if err := u.meta.DowngradeNode(node); err != nil {
 		return err
 	}
 
-	if err := meta.SetAddSecondaryMaxCountForOneNode(100); err != nil {
+	killAndWaitPartitions(node, partitions)
+
+	if err := client.CallCmd(node, "flush_log", []string{}).Error(); err != nil {
 		return err
 	}
 
 	log.Print("Rolling update by deployment...")
-	if err := deploy.RollingUpdate(node); err != nil {
+	if err := u.deploy.RollingUpdate(*nInfo); err != nil {
 		return err
 	}
 	log.Print("Rolling update by deployment done")
 
-	log.Printf("Wait %s to become alive...", node.IPPort())
-	if _, err := waitFor(func() (bool, error) {
-		nodes, err := meta.ListNodes()
-		if err != nil {
-			return false, err
-		}
-		var status string
-		for _, n := range nodes {
-			if n.IPPort() == node.IPPort() {
-				status = n.Status
-				break
-			}
-		}
-		return status == "ALIVE", nil
-	}, time.Second, 0); err != nil {
+	if err := u.waitNodeAlive(node); err != nil {
 		return err
 	}
 
-	log.Printf("Wait %s to become healthy...", node.IPPort())
-	if _, err := waitFor(func() (bool, error) {
-		infos, err := meta.ListTableHealthInfos()
-		if err != nil {
-			return false, err
-		}
-		count := 0
-		for _, info := range infos {
-			if info.PartitionCount != info.FullyHealthy {
-				count++
-			}
-		}
-		if count != 0 {
-			log.Printf("Cluster not healthy, unhealthy app count %d", count)
-			return false, nil
-		}
-		log.Print("Cluster becomes healthy")
-		return true, nil
-	}, time.Duration(10)*time.Second, 0); err != nil {
+	if err := u.meta.SetAddSecondaryMaxCountForOneNode(100); err != nil {
 		return err
 	}
 
+	if err := u.waitClusterHealthy(); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (u *Updater) Finish() error {
+	if err := u.meta.ResetDefaultAddSecondaryMaxCountForOneNode(); err != nil {
+		return err
+	}
+	return u.meta.Rebalance(false)
+}
+
+func (u *Updater) waitNodeAlive(n *util.PegasusNode) error {
+	for {
+		nodes, err := u.meta.ListNodes()
+		if err != nil {
+			return err
+		}
+		for _, ninfo := range nodes {
+			if ninfo.Address.GetAddress() == n.TCPAddr() {
+				if ninfo.Status == admin.NodeStatus_NS_ALIVE {
+					return nil
+				}
+			}
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func (u *Updater) waitClusterHealthy() error {
+	for {
+		clusterInfo, err := u.meta.GetClusterReplicaInfo()
+		if err != nil {
+			return err
+		}
+		unhealthy := int32(0)
+		for _, tb := range clusterInfo.Tables {
+			unhealthy += tb.Unhealthy
+		}
+		if unhealthy == int32(0) {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
 }

@@ -71,7 +71,7 @@ type Node struct {
 	// A typical use-case could be giving a "Status" that represents the node running status:
 	//   Attrs : map[string]interface{"Status" : "Running"}
 	// It will be useful to check if the node behaves normal after start/stop/rolling-update.
-	Attrs map[string]interface{}
+	Attrs map[string]interface{} `json:"attributes,omitempty"`
 }
 
 // NewNode returns a Node.

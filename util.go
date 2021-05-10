@@ -18,6 +18,7 @@
 package pegasus
 
 import (
+	"github.com/pegasus-kv/cluster-cli/meta"
 	"time"
 )
 
@@ -41,6 +42,6 @@ func waitFor(checker func() (bool, error), interval time.Duration, timeout int) 
 	}
 }
 
-func waitForNodeBecome(meta Meta, checker func()) error {
+func waitForNodeBecome(meta meta.Meta, checker func()) error {
 	return nil
 }

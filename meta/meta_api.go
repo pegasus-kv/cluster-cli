@@ -15,10 +15,12 @@
  * limitations under the License.
  */
 
-package pegasus
+package meta
 
 import (
+	"errors"
 	"fmt"
+	"github.com/XiaoMi/pegasus-go-client/idl/admin"
 	"strconv"
 	"strings"
 	"time"
@@ -29,19 +31,28 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type ClusterInfo struct {
+	Cluster               string
+	PrimaryMeta           string
+	BalanceOperationCount int
+}
+
 // Meta is a suite of API that connects to the Pegasus MetaServer,
 // retrieves the cluster information or controls cluster state.
+//
+// NOTE: This interface hides the many meta APIs in "admin-cli/client#Meta",
+// and exposes only the API which are necessary for this tool.
+// This design is to simplify mocking the MetaServer.
+//
 type Meta interface {
 	// Lists all tables' health information.
 	ListTableHealthInfos() ([]*client.TableHealthInfo, error)
 
 	SetMetaLevelSteady() error
-	SetMetaLevelLively() error
-
-	SetOnlyMovePrimary() error
-	UnsetOnlyMovePrimary() error
+	setMetaLevelLively() error
 
 	SetAddSecondaryMaxCountForOneNode(num int) error
+	ResetDefaultAddSecondaryMaxCountForOneNode() error
 
 	SetNodeLivePercentageZero() error
 
@@ -50,16 +61,18 @@ type Meta interface {
 	SetAssignDelayMs(delayMs int) error
 	ResetDefaultAssignDelayMs() error
 
-	MigratePrimariesOut(ipPort string) error
+	// MigratePrimariesOut ensures that the node has no primary after the call finishes.
+	MigratePrimariesOut(n *util.PegasusNode) error
 
 	Rebalance(bool) error
 
-	Downgrade(string) ([]string, error)
-
-	// Lists the replica nodes in the Pegasus cluster.
-	ListNodes() ([]*ReplicaNode, error)
+	DowngradeNode(n *util.PegasusNode) error
 
 	GetClusterInfo() (*ClusterInfo, error)
+
+	ListNodes() ([]*admin.NodeInfo, error)
+
+	GetClusterReplicaInfo() (*client.ClusterReplicaInfo, error)
 }
 
 // A MetaClient based on RPC.
@@ -71,9 +84,9 @@ type metaClient struct {
 
 // NewMetaClient creates an instance of MetaClient. It fails if the
 // target cluster doesn't exactly match the name `cluster`.
-func NewMetaClient(cluster string, metaList string) (Meta, error) {
+func NewMetaClient(cluster string, metaList []string) (Meta, error) {
 	c := &metaClient{
-		meta: client.NewRPCBasedMeta(strings.Split(metaList, ",")),
+		meta: client.NewRPCBasedMeta(metaList),
 	}
 	info, err := c.GetClusterInfo()
 	if err != nil {
@@ -131,7 +144,7 @@ func (c *metaClient) ListTableHealthInfos() ([]*client.TableHealthInfo, error) {
 	return result, nil
 }
 
-func (c *metaClient) SetOnlyMovePrimary() error {
+func (c *metaClient) setOnlyMovePrimary() error {
 	return nil
 }
 
@@ -140,11 +153,16 @@ func (c *metaClient) UnsetOnlyMovePrimary() error {
 }
 
 func (c *metaClient) SetAddSecondaryMaxCountForOneNode(num int) error {
-	return nil
+	numStr := fmt.Sprint(num)
+	return client.CallCmd(c.primaryMeta, "meta.lb.add_secondary_max_count_for_one_node", []string{numStr}).Error()
+}
+
+func (c *metaClient) ResetDefaultAddSecondaryMaxCountForOneNode() error {
+	return client.CallCmd(c.primaryMeta, "meta.lb.add_secondary_max_count_for_one_node", []string{"DEFAULT"}).Error()
 }
 
 func (c *metaClient) SetNodeLivePercentageZero() error {
-	return nil
+	return client.CallCmd(c.primaryMeta, "meta.live_percentage", []string{"0"}).Error()
 }
 
 func (c *metaClient) AssignSecondaryBlackList(blacklist string) error {
@@ -152,29 +170,30 @@ func (c *metaClient) AssignSecondaryBlackList(blacklist string) error {
 }
 
 func (c *metaClient) SetAssignDelayMs(delayMs int) error {
-	return nil
+	delayStr := fmt.Sprint(delayMs)
+	return client.CallCmd(c.primaryMeta, "meta.lb.assign_delay_ms", []string{delayStr}).Error()
 }
 
 func (c *metaClient) ResetDefaultAssignDelayMs() error {
-	return nil
+	return client.CallCmd(c.primaryMeta, "meta.lb.assign_delay_ms", []string{"DEFAULT"}).Error()
 }
 
 func (c *metaClient) SetMetaLevelSteady() error {
 	return client.SetMetaLevelSteady(c.meta)
 }
 
-func (c *metaClient) SetMetaLevelLively() error {
+func (c *metaClient) setMetaLevelLively() error {
 	return client.SetMetaLevelLively(c.meta)
 }
 
 func (c *metaClient) Rebalance(primaryOnly bool) error {
 	if primaryOnly {
-		if err := c.SetOnlyMovePrimary(); err != nil {
+		if err := c.setOnlyMovePrimary(); err != nil {
 			return err
 		}
 	}
 
-	if err := c.SetMetaLevelLively(); err != nil {
+	if err := c.setMetaLevelLively(); err != nil {
 		return err
 	}
 
@@ -213,26 +232,83 @@ func (c *metaClient) Rebalance(primaryOnly bool) error {
 	return nil
 }
 
-func (c *metaClient) MigratePrimariesOut(tcpAddr string) error {
-	return client.MigratePrimariesOut(c.meta, util.NewNodeFromTCPAddr(tcpAddr, session.NodeTypeReplica))
-}
-
-func (c *metaClient) Downgrade(addr string) ([]string, error) {
-	var gpids []string
-	if _, err := checkOutputByLine(runSh("downgrade_node", "-c", c.metaList, "-n", addr, "-t run"), false, func(line string) bool {
-		if strings.HasPrefix(line, "propose ") {
-			ss := strings.Fields(line)
-			if len(ss) > 2 {
-				gpids = append(gpids, strings.ReplaceAll(ss[2], ".", " "))
-			}
-		}
-		return false
-	}); err != nil {
+func (c *metaClient) getNodeState(n *util.PegasusNode) (*client.NodeState, error) {
+	nodes, err := client.ListNodesReplicaInfo(c.meta)
+	if err != nil {
 		return nil, err
 	}
-	return gpids, nil
+	for _, rs := range nodes {
+		if rs.IPPort == n.TCPAddr() {
+			return rs, nil
+		}
+	}
+	panic(fmt.Sprintf("no such node %s", n.TCPAddr()))
 }
 
-func (c *metaClient) ListNodes() ([]*ReplicaNode, error) {
-	return nil, nil
+func (c *metaClient) MigratePrimariesOut(n *util.PegasusNode) error {
+	sleptSecs := 0
+
+	// Wait until the node is confirmed to have no primary.
+	for {
+		if sleptSecs >= 28 {
+			return errors.New("MigratePrimariesOut timeout")
+		}
+		if sleptSecs%10 == 0 {
+			err := client.MigratePrimariesOut(c.meta, n)
+			if err != nil {
+				return err
+			}
+		}
+
+		nodeState, err := c.getNodeState(n)
+		if err == nil {
+			if nodeState.PrimariesNum == 0 {
+				return nil
+			}
+			log.Printf("still %d primaries left on %s", nodeState.PrimariesNum, n.CombinedAddr())
+		} else {
+			log.Error(err)
+		}
+
+		time.Sleep(time.Second)
+		sleptSecs++
+	}
+}
+
+func (c *metaClient) DowngradeNode(n *util.PegasusNode) error {
+	sleptSecs := 0
+
+	// Wait until the node is confirmed to have no replica.
+	for {
+		if sleptSecs >= 28 {
+			return errors.New("DowngradeNode timeout")
+		}
+		if sleptSecs%10 == 0 {
+			err := client.DowngradeNode(c.meta, n)
+			if err != nil {
+				return err
+			}
+		}
+
+		nodeState, err := c.getNodeState(n)
+		if err == nil {
+			if nodeState.ReplicaCount == 0 {
+				return nil
+			}
+			log.Printf("still %d replicas left on %s", nodeState.ReplicaCount, n.CombinedAddr())
+		} else {
+			log.Error(err)
+		}
+
+		time.Sleep(time.Second)
+		sleptSecs++
+	}
+}
+
+func (c *metaClient) ListNodes() ([]*admin.NodeInfo, error) {
+	return c.meta.ListNodes()
+}
+
+func (c *metaClient) GetClusterReplicaInfo() (*client.ClusterReplicaInfo, error) {
+	return client.GetClusterReplicaInfo(c.meta)
 }

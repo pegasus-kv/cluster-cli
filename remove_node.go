@@ -19,22 +19,24 @@ package pegasus
 
 import (
 	"errors"
+	"github.com/pegasus-kv/cluster-cli/meta"
 	"strings"
 	"time"
 
+	"github.com/pegasus-kv/cluster-cli/deployment"
 	log "github.com/sirupsen/logrus"
 )
 
-func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames []string) error {
+func RemoveNodes(cluster string, deploy deployment.Deployment, metaList string, nodeNames []string) error {
 	if err := listAndCacheAllNodes(deploy); err != nil {
 		return err
 	}
-	client, err := NewMetaClient(cluster, metaList)
+	client, err := meta.NewMetaClient(cluster, metaList)
 	if err != nil {
 		return err
 	}
 
-	nodes := make([]Node, len(nodeNames))
+	nodes := make([]deployment.Node, len(nodeNames))
 	addrs := make([]string, len(nodeNames))
 	for i, name := range nodeNames {
 		node, ok := findReplicaNode(name)
@@ -59,7 +61,7 @@ func RemoveNodes(cluster string, deploy Deployment, metaList string, nodeNames [
 	return nil
 }
 
-func removeNode(deploy Deployment, metaClient Meta, node Node) error {
+func removeNode(deploy deployment.Deployment, metaClient meta.Meta, node deployment.Node) error {
 	log.Printf("Stopping replica node %s of %s ...", node.Name(), node.IPPort())
 	if err := metaClient.SetMetaLevelSteady(); err != nil {
 		return err

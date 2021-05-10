@@ -72,7 +72,7 @@ var (
 	}
 	rollingUpdateCmd = &cobra.Command{
 		Use:   "rolling-update",
-		Short: "Update a list of replica nodes or update all meta/replica/collector nodes",
+		Short: "Upgrade one replica node or upgrade all meta/replica/collector nodes",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if all {
 				nodes = nil
