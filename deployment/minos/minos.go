@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package deployment
+package minos
 
 import (
 	"encoding/json"
@@ -25,6 +25,7 @@ import (
 	"strconv"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/pegasus-kv/cluster-cli/deployment"
 )
 
 type minosDeployment struct {
@@ -44,7 +45,7 @@ type minosDeployment struct {
 }
 
 // NewMinos returns a deployment of Minos.
-func NewMinos(cluster string, userName string) Deployment {
+func NewMinos(cluster string, userName string) deployment.Deployment {
 	d := &minosDeployment{
 		cluster:  cluster,
 		userName: userName,
@@ -86,7 +87,7 @@ type minosOpResponse struct {
 
 // The minos RESTFul API is basically general for start/stop/rolling-update operations.
 // So we use a generic function for them all.
-func (m *minosDeployment) performGenericMinosOp(opType string, node Node) error {
+func (m *minosDeployment) performGenericMinosOp(opType string, node deployment.Node) error {
 	taskID, _ := strconv.Atoi(node.Name)
 
 	reqBody := map[string]interface{}{
@@ -115,19 +116,19 @@ func (m *minosDeployment) performGenericMinosOp(opType string, node Node) error 
 	return nil
 }
 
-func (m *minosDeployment) StartNode(node Node) error {
+func (m *minosDeployment) StartNode(node deployment.Node) error {
 	return m.performGenericMinosOp("start", node)
 }
 
-func (m *minosDeployment) StopNode(node Node) error {
+func (m *minosDeployment) StopNode(node deployment.Node) error {
 	return m.performGenericMinosOp("stop", node)
 }
 
-func (m *minosDeployment) RollingUpdate(node Node) error {
+func (m *minosDeployment) RollingUpdate(node deployment.Node) error {
 	return m.performGenericMinosOp("rolling_update", node)
 }
 
-func (m *minosDeployment) ListAllNodes() ([]Node, error) {
+func (m *minosDeployment) ListAllNodes() ([]deployment.Node, error) {
 	type nodeDetails struct {
 		Job    string `json:"job"`
 		TaskID int    `json:"task_id"`
@@ -139,18 +140,18 @@ func (m *minosDeployment) ListAllNodes() ([]Node, error) {
 		return nil, err
 	}
 
-	var allNodes []Node
+	var allNodes []deployment.Node
 	for tcpAddr, n := range results {
-		var job JobType
+		var job deployment.JobType
 		switch n.Job {
 		case "replica":
-			job = JobReplica
+			job = deployment.JobReplica
 		case "collector":
-			job = JobCollector
+			job = deployment.JobCollector
 		case "meta":
-			job = JobMeta
+			job = deployment.JobMeta
 		}
-		allNodes = append(allNodes, NewNode(fmt.Sprint(n.TaskID), tcpAddr, job))
+		allNodes = append(allNodes, deployment.NewNode(fmt.Sprint(n.TaskID), tcpAddr, job))
 	}
 	return allNodes, nil
 }
