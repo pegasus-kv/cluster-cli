@@ -19,32 +19,23 @@ package pegasus
 
 import (
 	"errors"
-	"github.com/pegasus-kv/cluster-cli/meta"
 	"strings"
 	"time"
 
 	"github.com/pegasus-kv/cluster-cli/deployment"
+	"github.com/pegasus-kv/cluster-cli/meta"
 	log "github.com/sirupsen/logrus"
 )
 
-func RemoveNodes(cluster string, deploy deployment.Deployment, metaList string, nodeNames []string) error {
-	if err := listAndCacheAllNodes(deploy); err != nil {
-		return err
-	}
-	client, err := meta.NewMetaClient(cluster, metaList)
+func RemoveNode(cluster string, deploy deployment.Deployment, metaList string, node string) error {
+	meta, err := newMeta(cluster, deploy)
 	if err != nil {
 		return err
 	}
 
-	nodes := make([]deployment.Node, len(nodeNames))
-	addrs := make([]string, len(nodeNames))
-	for i, name := range nodeNames {
-		node, ok := findReplicaNode(name)
-		if !ok {
-			return errors.New("replica node '" + name + "' not found")
-		}
-		nodes[i] = node
-		addrs[i] = node.IPPort()
+	node, ok := findReplicaNode(name)
+	if !ok {
+		return errors.New("replica node '" + name + "' not found")
 	}
 	if err := client.AssignSecondaryBlackList(strings.Join(addrs, ",")); err != nil {
 		return err
@@ -53,10 +44,8 @@ func RemoveNodes(cluster string, deploy deployment.Deployment, metaList string, 
 		return err
 	}
 
-	for _, node := range nodes {
-		if err := removeNode(deploy, client, node); err != nil {
-			return err
-		}
+	if err := removeNode(deploy, client, node); err != nil {
+		return err
 	}
 	return nil
 }
@@ -72,33 +61,9 @@ func removeNode(deploy deployment.Deployment, metaClient meta.Meta, node deploym
 
 	// migrate node
 	log.Print("Migrating primary replicas out of node...")
-	if err := metaClient.MigratePrimariesOut(node.IPPort()); err != nil {
+	if err := metaClient.MigratePrimariesOut(node); err != nil {
 		return err
 	}
-	// wait for pri_count == 0
-	log.Printf("Wait %s to migrate done...", node.IPPort())
-	if _, err := waitFor(func() (bool, error) {
-		val := 0
-		nodes, err := metaClient.ListNodes()
-		if err != nil {
-			return false, err
-		}
-		for _, n := range nodes {
-			if n.IPPort() == node.IPPort() {
-				val = n.PrimaryCount
-				break
-			}
-		}
-		if val == 0 {
-			log.Print("Migrate done.")
-			return true, nil
-		}
-		log.Printf("Still %d primary replicas left on %s", val, node.IPPort())
-		return false, nil
-	}, time.Second, 0); err != nil {
-		return err
-	}
-	time.Sleep(time.Second)
 
 	// downgrade node and kill partition
 	log.Print("Downgrading replicas on node...")

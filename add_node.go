@@ -18,8 +18,6 @@
 package pegasus
 
 import (
-	"errors"
-	"github.com/pegasus-kv/admin-cli/client"
 	"github.com/pegasus-kv/cluster-cli/deployment"
 	log "github.com/sirupsen/logrus"
 )
@@ -36,17 +34,18 @@ func AddNodes(cluster string, deploy deployment.Deployment, nodeNames []string) 
 	}
 
 	for _, name := range nodeNames {
-		node, ok := findReplicaNode(name)
-		if !ok {
-			return errors.New("replica node '" + name + "' not found")
+		node, err := findReplicaNode(name)
+		if err != nil {
+			return err
 		}
-		log.Printf("Starting node %s by deployment...", node.IPPort())
-		if err := deploy.StartNode(node); err != nil {
+		log.Printf("Starting node %s by deployment...", node.IPPort)
+		if err := deploy.StartNode(*node); err != nil {
 			return err
 		}
 		log.Print("Starting node by deployment done")
 	}
-	if err := client.Rebalance(false); err != nil {
+
+	if err := meta.Rebalance(false); err != nil {
 		return err
 	}
 
