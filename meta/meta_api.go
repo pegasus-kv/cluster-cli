@@ -20,11 +20,12 @@ package meta
 import (
 	"errors"
 	"fmt"
-	"github.com/XiaoMi/pegasus-go-client/idl/admin"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/XiaoMi/pegasus-go-client/idl/admin"
+	"github.com/XiaoMi/pegasus-go-client/idl/base"
 	"github.com/XiaoMi/pegasus-go-client/session"
 	"github.com/pegasus-kv/admin-cli/client"
 	"github.com/pegasus-kv/admin-cli/util"
@@ -49,7 +50,6 @@ type Meta interface {
 	ListTableHealthInfos() ([]*client.TableHealthInfo, error)
 
 	SetMetaLevelSteady() error
-	setMetaLevelLively() error
 
 	SetAddSecondaryMaxCountForOneNode(num int) error
 	ResetDefaultAddSecondaryMaxCountForOneNode() error
@@ -64,9 +64,9 @@ type Meta interface {
 	// MigratePrimariesOut ensures that the node has no primary after the call finishes.
 	MigratePrimariesOut(n *util.PegasusNode) error
 
-	Rebalance(bool) error
+	DowngradeNodeWithDetails(n *util.PegasusNode) (downgradedParts []*base.Gpid, err error)
 
-	DowngradeNode(n *util.PegasusNode) error
+	Rebalance(bool) error
 
 	GetClusterInfo() (*ClusterInfo, error)
 
@@ -275,25 +275,25 @@ func (c *metaClient) MigratePrimariesOut(n *util.PegasusNode) error {
 	}
 }
 
-func (c *metaClient) DowngradeNode(n *util.PegasusNode) error {
+func (c *metaClient) DowngradeNodeWithDetails(n *util.PegasusNode) (downgradedParts []*base.Gpid, err error) {
 	sleptSecs := 0
 
 	// Wait until the node is confirmed to have no replica.
 	for {
 		if sleptSecs >= 28 {
-			return errors.New("DowngradeNode timeout")
+			return nil, errors.New("DowngradeNode timeout")
 		}
 		if sleptSecs%10 == 0 {
-			err := client.DowngradeNode(c.meta, n)
+			downgradedParts, err = client.DowngradeNodeWithDetails(c.meta, n)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 
 		nodeState, err := c.getNodeState(n)
 		if err == nil {
 			if nodeState.ReplicaCount == 0 {
-				return nil
+				return downgradedParts, nil
 			}
 			log.Printf("still %d replicas left on %s", nodeState.ReplicaCount, n.CombinedAddr())
 		} else {

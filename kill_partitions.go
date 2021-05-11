@@ -25,6 +25,7 @@ import (
 	"github.com/XiaoMi/pegasus-go-client/idl/base"
 	"github.com/pegasus-kv/admin-cli/client"
 	"github.com/pegasus-kv/admin-cli/util"
+	"github.com/pegasus-kv/collector/aggregate"
 )
 
 func killPartitions(node *util.PegasusNode, partitions []*base.Gpid) error {
@@ -44,7 +45,7 @@ func killAndWaitPartitions(node *util.PegasusNode, partitions []*base.Gpid) erro
 	// Wait until the node is confirmed to have no replica.
 	for {
 		if sleptSecs >= 28 {
-			return errors.New("DowngradeNode timeout")
+			return errors.New("killAndWaitPartitions timeout")
 		}
 		if sleptSecs%10 == 0 {
 			err := killPartitions(node, partitions)
@@ -53,16 +54,25 @@ func killAndWaitPartitions(node *util.PegasusNode, partitions []*base.Gpid) erro
 			}
 		}
 
-		res := client.CallCmd(node, "perf-counters", []string{".*replica(Count)"})
-		if res.Failed() {
-			return res.Error()
+		perfSession := aggregate.WrapPerf(node.TCPAddr(), node.Session())
+		counters, err := perfSession.GetPerfCounters(".*replica(Count)")
+		if err != nil {
+			return err
 		}
-		count := 0
+		// replica_stub.replica(Count)
+		// replica_stub.opening.replica(Count)
+		// replica_stub.closing.replica(Count)
+		replicaCount := 0
 		for _, counter := range counters {
-			count += int(counter.Value)
+			replicaCount += int(counter.Value)
+		}
+		if replicaCount == 0 {
+			break
 		}
 
 		time.Sleep(time.Second)
 		sleptSecs++
 	}
+
+	return nil
 }

@@ -18,6 +18,8 @@
 package pegasus
 
 import (
+	"fmt"
+
 	"github.com/pegasus-kv/cluster-cli/deployment"
 	"github.com/pegasus-kv/cluster-cli/meta"
 )
@@ -33,13 +35,17 @@ func listAndCacheAllNodes(deploy deployment.Deployment) error {
 	return nil
 }
 
-func findNode(name string, jobType deployment.JobType) *deployment.Node {
+func findNode(name string, jobType deployment.JobType) (*deployment.Node, error) {
 	for _, node := range globalAllNodes {
 		if node.Job == jobType && name == node.Name {
-			return &node
+			return &node, nil
 		}
 	}
-	return nil
+	return nil, fmt.Errorf("%s node '%s' was not found", jobType, name)
+}
+
+func findReplicaNode(name string) (*deployment.Node, error) {
+	return findNode(name, deployment.JobReplica)
 }
 
 // A simple wrapper around NewMetaClient.

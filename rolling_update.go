@@ -19,11 +19,10 @@ package pegasus
 
 import (
 	"fmt"
-	"github.com/XiaoMi/pegasus-go-client/idl/admin"
 	"time"
 
+	"github.com/XiaoMi/pegasus-go-client/idl/admin"
 	"github.com/XiaoMi/pegasus-go-client/session"
-	"github.com/pegasus-kv/admin-cli/client"
 	"github.com/pegasus-kv/admin-cli/util"
 	"github.com/pegasus-kv/cluster-cli/deployment"
 	metaApi "github.com/pegasus-kv/cluster-cli/meta"
@@ -33,6 +32,8 @@ import (
 type Updater struct {
 	meta   metaApi.Meta
 	deploy deployment.Deployment
+
+	down Downgrader
 }
 
 func PrepareRollingUpdate(cluster string, deploy deployment.Deployment) (*Updater, error) {
@@ -49,13 +50,14 @@ func PrepareRollingUpdate(cluster string, deploy deployment.Deployment) (*Update
 	return &Updater{
 		meta:   meta,
 		deploy: deploy,
+		down:   newDowngrader(meta, deploy),
 	}, nil
 }
 
 func (u *Updater) FindAndUpdateNode(nodeName string, jobType deployment.JobType) error {
-	node := findNode(nodeName, jobType)
-	if node == nil {
-		return fmt.Errorf("%s node '%s' was not found", jobType, nodeName)
+	node, err := findNode(nodeName, jobType)
+	if err != nil {
+		return err
 	}
 	return u.UpdateNode(node)
 }
@@ -86,18 +88,7 @@ func (u *Updater) updateSingleReplicaNode(nInfo *deployment.Node) error {
 	}
 
 	node := util.NewNodeFromTCPAddr(nInfo.IPPort, session.NodeTypeReplica)
-
-	// Safely downgrades replicas from node, as no primary was directly effected.
-	if err := u.meta.MigratePrimariesOut(node); err != nil {
-		return err
-	}
-	if err := u.meta.DowngradeNode(node); err != nil {
-		return err
-	}
-
-	killAndWaitPartitions(node, partitions)
-
-	if err := client.CallCmd(node, "flush_log", []string{}).Error(); err != nil {
+	if err := u.down.Downgrade(node); err != nil {
 		return err
 	}
 
